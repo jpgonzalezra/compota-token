@@ -33,6 +33,9 @@
     "test-integration": "make -B integration",
     "test-invariant": "make -B invariant"
   },
+  "dependencies": {
+    "solmate": "^6.2.0"
+  },
   "devDependencies": {
     "forge-std": "github:foundry-rs/forge-std#v1.8.1",
     "husky": "^9.0.11",
