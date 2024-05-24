@@ -31,6 +31,14 @@ contract InterestBearingToken is ERC20, Owned {
         _mint(to_, amount_);
     }
 
+    function burn(uint256 amount_) external {
+        _revertIfInsufficientAmount(amount_);
+        if (this.balanceOf(msg.sender) < amount_) revert InsufficientAmount(amount_);
+        address caller = msg.sender;
+        // _updateInterest(caller)
+        _burn(caller, amount_);
+    }
+
     /* ============ Internal Interactive Functions ============ */
 
     function _updateInterest(address to_) internal {
