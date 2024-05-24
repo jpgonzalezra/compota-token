@@ -82,7 +82,7 @@ contract InterestBearingTokenTest is Test {
         _burn(alice, BURN_AMOUNT);
         assertEq(token.balanceOf(alice), INITIAL_SUPPLY - BURN_AMOUNT);
         _burn(alice, BURN_AMOUNT / 2);
-        assertEq(token.balanceOf(alice), INITIAL_SUPPLY - (BURN_AMOUNT + BURN_AMOUNT / 2));
+        assertEq(token.balanceOf(alice), INITIAL_SUPPLY - (BURN_AMOUNT + (BURN_AMOUNT / 2)));
     }
 
     function testBurningMoreThanBalance() public {
@@ -109,8 +109,8 @@ contract InterestBearingTokenTest is Test {
     function testBurningAfterTransfer() public {
         _mint(owner, alice, INITIAL_SUPPLY);
         _transfer(alice, bob, TRANSFER_AMOUNT);
-        _burn(alice, BURN_AMOUNT / 2);
-        assertEq(token.balanceOf(alice), INITIAL_SUPPLY - TRANSFER_AMOUNT - BURN_AMOUNT / 2);
+        _burn(alice, BURN_AMOUNT);
+        assertEq(token.balanceOf(alice), INITIAL_SUPPLY - TRANSFER_AMOUNT - BURN_AMOUNT);
         assertEq(token.balanceOf(bob), TRANSFER_AMOUNT);
     }
 
