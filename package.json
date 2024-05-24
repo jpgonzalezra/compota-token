@@ -34,6 +34,7 @@
     "test-invariant": "make -B invariant"
   },
   "devDependencies": {
+    "forge-std": "github:foundry-rs/forge-std#v1.8.1",
     "husky": "^9.0.11",
     "lint-staged": "^15.2.2",
     "prettier": "^3.2.5",
