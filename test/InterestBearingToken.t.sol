@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.26;
 
-import { Test } from "forge-std/Test.sol";
+import { Test, console } from "forge-std/Test.sol";
 import { InterestBearingToken } from "../src/InterestBearingToken.sol";
 
 interface IERC20 {
@@ -123,7 +123,31 @@ contract InterestBearingTokenTest is Test {
         vm.warp(block.timestamp + 365 days);
         token.updateInterest(alice);
 
-        uint256 expectedFinalBalance = INITIAL_SUPPLY + ((INITIAL_SUPPLY * INTEREST_RATE) / 10000);
+        uint interest = (INITIAL_SUPPLY * INTEREST_RATE * 365 days) / (10000 * 365 days);
+        uint256 expectedFinalBalance = INITIAL_SUPPLY + interest;
+        assertEq(token.totalBalance(alice), expectedFinalBalance);
+    }
+
+    function testInterestAccrualAfterMultipleMint() external {
+        _mint(owner, alice, INITIAL_SUPPLY);
+        uint256 balanceRaw = INITIAL_SUPPLY;
+        assertEq(token.balanceOf(alice), balanceRaw);
+        vm.warp(block.timestamp + 180 days);
+
+        // Calculate interest for the first 180 days
+        uint256 firstPeriodInterest = (balanceRaw * INTEREST_RATE * 180 days) / (10000 * 365 days);
+        _mint(owner, alice, INITIAL_SUPPLY);
+        balanceRaw += INITIAL_SUPPLY;
+        assertEq(token.balanceOf(alice), balanceRaw);
+
+        vm.warp(block.timestamp + 185 days); // total 365 days from first mint
+
+        // Calculate interest for the next 185 days with updated balance
+        uint256 secondPeriodInterest = (balanceRaw * INTEREST_RATE * 185 days) / (10000 * 365 days);
+
+        // The expected final balance includes the initial supplies and accrued interests
+        token.updateInterest(alice);
+        uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
         assertEq(token.totalBalance(alice), expectedFinalBalance);
     }
 
