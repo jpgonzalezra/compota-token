@@ -43,7 +43,7 @@ contract InterestBearingToken is ERC20, Owned {
         _revertIfInvalidRecipient(to_);
         _revertIfInsufficientAmount(amount_);
         _mint(to_, amount_);
-        _updateInterest(to_);
+        _updateRewards(to_);
     }
 
     function burn(uint256 amount_) external {
@@ -51,11 +51,11 @@ contract InterestBearingToken is ERC20, Owned {
         if (this.balanceOf(msg.sender) < amount_) revert InsufficientAmount(amount_);
         address caller = msg.sender;
         _burn(caller, amount_);
-        _updateInterest(caller);
+        _updateRewards(caller);
     }
 
     function updateInterest(address account_) external {
-        _updateInterest(account_);
+        _updateRewards(account_);
     }
 
     function totalBalance(address account_) external view returns (uint256) {
@@ -64,7 +64,7 @@ contract InterestBearingToken is ERC20, Owned {
 
     /* ============ Internal Interactive Functions ============ */
 
-    function _updateInterest(address account_) internal {
+    function _updateRewards(address account_) internal {
         uint256 timestamp = block.timestamp;
         if (lastUpdateTimestamp[account_] == 0) {
             lastUpdateTimestamp[account_] = timestamp;
