@@ -34,7 +34,7 @@
     "test-invariant": "make -B invariant"
   },
   "dependencies": {
-    "solmate": "^6.2.0"
+    "solmate": "6.2.0"
   },
   "devDependencies": {
     "forge-std": "github:foundry-rs/forge-std#v1.8.1",
