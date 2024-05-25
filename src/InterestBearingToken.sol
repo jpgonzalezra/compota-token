@@ -82,7 +82,8 @@ contract InterestBearingToken is ERC20, Owned {
             emit StartedEarning(account_);
             return;
         }
-        // we are calculating always using the raw balance (simple interest)
+
+        // We always calculate interest using the raw balance (simple interest)
         uint256 rawBalance = this.balanceOf(account_);
 
         // Safe to use unchecked here, since `block.timestamp` is always greater than `lastUpdateTimestamp[account_]`.

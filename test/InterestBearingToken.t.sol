@@ -43,14 +43,14 @@ contract InterestBearingTokenTest is Test {
         assertEq(token.balanceOf(alice), INITIAL_SUPPLY);
     }
 
-    function testMintingByNonOwner() external {
+    function testMintingFailsByNonOwner() external {
         // Alice tries to mint tokens
         vm.prank(alice);
         vm.expectRevert("UNAUTHORIZED");
         token.mint(alice, INITIAL_SUPPLY);
     }
 
-    function testMintingByOwnerAfterOwnershipTransfer() external {
+    function testMintingByNewOwnerAfterTransfer() external {
         vm.prank(owner);
         // Transfer ownership to alice
         token.transferOwnership(alice);
@@ -76,7 +76,7 @@ contract InterestBearingTokenTest is Test {
         token.mint(alice, INSUFFICIENT_AMOUNT);
     }
 
-    function testBurningCorrectly() public {
+    function testBurningTokensCorrectly() public {
         _mint(owner, alice, INITIAL_SUPPLY);
         _burn(alice, BURN_AMOUNT);
         assertEq(token.balanceOf(alice), INITIAL_SUPPLY - BURN_AMOUNT);
@@ -92,7 +92,7 @@ contract InterestBearingTokenTest is Test {
         token.burn(valueToBurn);
     }
 
-    function testBurningInsufficientAmount() public {
+    function testBurningFailsWithInsufficientAmount() public {
         _mint(owner, alice, INITIAL_SUPPLY);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(InsufficientAmount.selector, INSUFFICIENT_AMOUNT));
@@ -105,7 +105,7 @@ contract InterestBearingTokenTest is Test {
         assertEq(token.balanceOf(alice), 0);
     }
 
-    function testBurningAfterTransfer() public {
+    function testBurningTokensAfterTransfer() public {
         _mint(owner, alice, INITIAL_SUPPLY);
         _transfer(alice, bob, TRANSFER_AMOUNT);
         _burn(alice, BURN_AMOUNT);
@@ -128,7 +128,7 @@ contract InterestBearingTokenTest is Test {
         assertEq(token.totalBalance(alice), expectedFinalBalance);
     }
 
-    function testInterestAccrualAfterMultipleMint() external {
+    function testInterestAccrualWithMultipleMints() external {
         _mint(owner, alice, INITIAL_SUPPLY);
         uint256 balanceRaw = INITIAL_SUPPLY;
         assertEq(token.balanceOf(alice), balanceRaw);
@@ -173,7 +173,7 @@ contract InterestBearingTokenTest is Test {
         token.setYearlyRate(40001);
     }
 
-    function testConstructorSetsYearlyRate() public {
+    function testConstructorInitializesYearlyRate() public {
         InterestBearingToken newToken = new InterestBearingToken(500);
         assertEq(newToken.yearlyRate(), 500);
     }
