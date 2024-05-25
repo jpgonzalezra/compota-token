@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import { ERC20 } from "solmate/tokens/ERC20.sol";
 import { Owned } from "solmate/auth/Owned.sol";
+
 // import { console } from "forge-std/console.sol";
 
 contract InterestBearingToken is ERC20, Owned {
@@ -42,16 +43,16 @@ contract InterestBearingToken is ERC20, Owned {
     function mint(address to_, uint256 amount_) external onlyOwner {
         _revertIfInvalidRecipient(to_);
         _revertIfInsufficientAmount(amount_);
-        _mint(to_, amount_);
         _updateRewards(to_);
+        _mint(to_, amount_);
     }
 
     function burn(uint256 amount_) external {
         _revertIfInsufficientAmount(amount_);
         if (this.balanceOf(msg.sender) < amount_) revert InsufficientAmount(amount_);
         address caller = msg.sender;
-        _burn(caller, amount_);
         _updateRewards(caller);
+        _burn(caller, amount_);
     }
 
     function updateInterest(address account_) external {
@@ -71,11 +72,13 @@ contract InterestBearingToken is ERC20, Owned {
             emit StartedEarning(account_);
             return;
         }
-        uint256 balance = this.balanceOf(account_);
+        // we are calculating always using the raw balance (simple interest)
+        uint256 rawBalance = this.balanceOf(account_);
+
         // Safe to use unchecked here, since `block.timestamp` is always greater than `lastUpdateTimestamp[account_]`.
         unchecked {
             uint256 timeElapsed = timestamp - lastUpdateTimestamp[account_];
-            uint256 interest = (balance * timeElapsed * yearlyRate) / (10_000 * uint256(SECONDS_PER_YEAR));
+            uint256 interest = (rawBalance * timeElapsed * yearlyRate) / (10_000 * uint256(SECONDS_PER_YEAR));
             accruedInterest[account_] += interest;
         }
         lastUpdateTimestamp[account_] = block.timestamp;
