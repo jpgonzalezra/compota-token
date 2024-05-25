@@ -20,13 +20,16 @@ contract InterestBearingToken is ERC20, Owned {
 
     /* ============ Errors ============ */
     error InvalidRecipient(address recipient_);
+    error InvalidYearlyRate(uint16 rate_);
     error InsufficientAmount(uint256 amount_);
 
     /* ============ Variables ============ */
     /// @notice The number of seconds in a year.
     uint32 internal constant SECONDS_PER_YEAR = 31_536_000;
+    uint16 public constant MIN_YEARLY_RATE = 100; // 1% APY in BPS
+    uint16 public constant MAX_YEARLY_RATE = 4000; // 40% APY as max
 
-    uint64 public yearlyRate; // interest rate in BPS
+    uint16 public yearlyRate; // interest rate in BPS beetween 100 (1%) and 40000 (40%)
 
     mapping(address => uint256) internal lastUpdateTimestamp;
     mapping(address => uint256) internal accruedInterest;
@@ -35,8 +38,15 @@ contract InterestBearingToken is ERC20, Owned {
     // nothing for now
 
     /* ============ Constructor ============ */
-    constructor(uint64 yearlyRate_) ERC20("IBToken", "IB", 6) Owned(msg.sender) {
-        yearlyRate = yearlyRate_;
+    constructor(uint16 yearlyRate_) ERC20("IBToken", "IB", 6) Owned(msg.sender) {
+        setYearlyRate(yearlyRate_);
+    }
+
+    function setYearlyRate(uint16 newRate_) public onlyOwner {
+        if (newRate_ < MIN_YEARLY_RATE || newRate_ > MAX_YEARLY_RATE) {
+            revert InvalidYearlyRate(newRate_);
+        }
+        yearlyRate = newRate_;
     }
 
     /* ============ Interactive Functions ============ */
