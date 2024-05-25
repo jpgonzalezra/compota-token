@@ -19,7 +19,7 @@ contract InterestBearingTokenTest is Test {
     uint256 constant BURN_AMOUNT = 400 * 10e6;
     uint256 constant TRANSFER_AMOUNT = 300 * 10e6;
     uint256 constant INSUFFICIENT_AMOUNT = 0;
-    uint64 constant INTEREST_RATE = 1000; // 10% APY in BPS
+    uint16 constant INTEREST_RATE = 1000; // 10% APY in BPS
 
     error InvalidRecipient(address recipient_);
     error InsufficientAmount(uint256 amount_);
@@ -149,6 +149,41 @@ contract InterestBearingTokenTest is Test {
         token.updateInterest(alice);
         uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
         assertEq(token.totalBalance(alice), expectedFinalBalance);
+    }
+
+    function testSetYearlyRate() public {
+        // Only the owner should be able to set the yearly rate within the valid range
+        vm.prank(owner);
+        token.setYearlyRate(500);
+        assertEq(token.yearlyRate(), 500);
+
+        // Expect revert if non-owner tries to set the yearly rate
+        vm.prank(alice);
+        vm.expectRevert("UNAUTHORIZED");
+        token.setYearlyRate(100);
+
+        vm.prank(owner);
+        // Test with invalid rate below minimum
+        vm.expectRevert(abi.encodeWithSelector(InterestBearingToken.InvalidYearlyRate.selector, 99));
+        token.setYearlyRate(99);
+
+        vm.prank(owner);
+        // Test with invalid rate above maximum
+        vm.expectRevert(abi.encodeWithSelector(InterestBearingToken.InvalidYearlyRate.selector, 40001));
+        token.setYearlyRate(40001);
+    }
+
+    function testConstructorSetsYearlyRate() public {
+        InterestBearingToken newToken = new InterestBearingToken(500);
+        assertEq(newToken.yearlyRate(), 500);
+    }
+
+    function testConstructorRevertsOnInvalidYearlyRate() public {
+        vm.expectRevert(abi.encodeWithSelector(InterestBearingToken.InvalidYearlyRate.selector, 0));
+        new InterestBearingToken(0);
+
+        vm.expectRevert(abi.encodeWithSelector(InterestBearingToken.InvalidYearlyRate.selector, 50000));
+        new InterestBearingToken(50000);
     }
 
     /* ============ Helper functions ============ */
