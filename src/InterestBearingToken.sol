@@ -3,8 +3,17 @@ pragma solidity 0.8.26;
 
 import { ERC20 } from "solmate/tokens/ERC20.sol";
 import { Owned } from "solmate/auth/Owned.sol";
+// import { console } from "forge-std/console.sol";
 
 contract InterestBearingToken is ERC20, Owned {
+    /* ============ Events ============ */
+
+    /**
+     * @notice Emmited when the account starts earning token
+     * @param  account The account that started earning.
+     */
+    event StartedEarning(address indexed account);
+
     /* ============ Structs ============ */
     // nothing for now
 
@@ -13,36 +22,63 @@ contract InterestBearingToken is ERC20, Owned {
     error InsufficientAmount(uint256 amount_);
 
     /* ============ Variables ============ */
-    uint256 public interestRate; // interest rate in BPS
+    /// @notice The number of seconds in a year.
+    uint32 internal constant SECONDS_PER_YEAR = 31_536_000;
+
+    uint64 public yearlyRate; // interest rate in BPS
+
+    mapping(address => uint256) internal lastUpdateTimestamp;
+    mapping(address => uint256) internal accruedInterest;
 
     /* ============ Modifiers ============ */
     // nothing for now
 
     /* ============ Constructor ============ */
-    constructor(uint256 interestRate_) ERC20("IBToken", "IB", 6) Owned(msg.sender) {
-        interestRate = interestRate_;
+    constructor(uint64 yearlyRate_) ERC20("IBToken", "IB", 6) Owned(msg.sender) {
+        yearlyRate = yearlyRate_;
     }
 
     /* ============ Interactive Functions ============ */
     function mint(address to_, uint256 amount_) external onlyOwner {
         _revertIfInvalidRecipient(to_);
         _revertIfInsufficientAmount(amount_);
-        // _updateInterest(to_)
         _mint(to_, amount_);
+        _updateInterest(to_);
     }
 
     function burn(uint256 amount_) external {
         _revertIfInsufficientAmount(amount_);
         if (this.balanceOf(msg.sender) < amount_) revert InsufficientAmount(amount_);
         address caller = msg.sender;
-        // _updateInterest(caller)
         _burn(caller, amount_);
+        _updateInterest(caller);
+    }
+
+    function updateInterest(address account_) external {
+        _updateInterest(account_);
+    }
+
+    function totalBalance(address account_) external view returns (uint256) {
+        return this.balanceOf(account_) + accruedInterest[account_];
     }
 
     /* ============ Internal Interactive Functions ============ */
 
-    function _updateInterest(address to_) internal {
-        // nothing for now
+    function _updateInterest(address account_) internal {
+        uint256 timestamp = block.timestamp;
+        if (lastUpdateTimestamp[account_] == 0) {
+            lastUpdateTimestamp[account_] = timestamp;
+            emit StartedEarning(account_);
+            return;
+        }
+        uint256 balance = this.balanceOf(account_);
+        // Safe to use unchecked here, since `block.timestamp` is always greater than `lastUpdateTimestamp[account_]`.
+        unchecked {
+            uint256 timeElapsed = timestamp - lastUpdateTimestamp[account_];
+            uint256 interest = (balance * timeElapsed * yearlyRate) / (10_000 * uint256(SECONDS_PER_YEAR));
+            accruedInterest[account_] += interest;
+        }
+        lastUpdateTimestamp[account_] = block.timestamp;
     }
 
     /**
