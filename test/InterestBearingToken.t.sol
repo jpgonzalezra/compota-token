@@ -19,7 +19,7 @@ contract InterestBearingTokenTest is Test {
     uint256 constant BURN_AMOUNT = 400 * 10e6;
     uint256 constant TRANSFER_AMOUNT = 300 * 10e6;
     uint256 constant INSUFFICIENT_AMOUNT = 0;
-    uint256 constant INTEREST_RATE = 1000; // 10% APY in BPS
+    uint64 constant INTEREST_RATE = 1000; // 10% APY in BPS
 
     error InvalidRecipient(address recipient_);
     error InsufficientAmount(uint256 amount_);
