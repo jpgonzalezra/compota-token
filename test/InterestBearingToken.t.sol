@@ -19,23 +19,24 @@ contract InterestBearingTokenTest is Test {
     uint256 constant BURN_AMOUNT = 400 * 10e6;
     uint256 constant TRANSFER_AMOUNT = 300 * 10e6;
     uint256 constant INSUFFICIENT_AMOUNT = 0;
+    uint256 constant INTEREST_RATE = 1000; // 10% APY in BPS
 
     error InvalidRecipient(address recipient_);
     error InsufficientAmount(uint256 amount_);
 
+    event StartedEarning(address indexed account);
+
     function setUp() external {
         vm.prank(owner);
-        token = new InterestBearingToken(1e3); // 10% APY in BPS
+        token = new InterestBearingToken(INTEREST_RATE); // 10% APY in BPS
     }
 
     function testInitialization() external view {
         assertEq(token.owner(), owner);
         assertEq(token.name(), "IBToken");
         assertEq(token.symbol(), "IB");
-        assertEq(token.interestRate(), 1e3);
+        assertEq(token.yearlyRate(), 1e3);
     }
-
-    /* ============ Mint tests ============ */
 
     function testMintingByOwner() external {
         _mint(owner, alice, INITIAL_SUPPLY);
@@ -75,8 +76,6 @@ contract InterestBearingTokenTest is Test {
         token.mint(alice, INSUFFICIENT_AMOUNT);
     }
 
-    /* ============ Burn tests ============ */
-
     function testBurningCorrectly() public {
         _mint(owner, alice, INITIAL_SUPPLY);
         _burn(alice, BURN_AMOUNT);
@@ -112,6 +111,20 @@ contract InterestBearingTokenTest is Test {
         _burn(alice, BURN_AMOUNT);
         assertEq(token.balanceOf(alice), INITIAL_SUPPLY - TRANSFER_AMOUNT - BURN_AMOUNT);
         assertEq(token.balanceOf(bob), TRANSFER_AMOUNT);
+    }
+
+    function testInterestAccrualAfterOneYear() external {
+        vm.prank(owner);
+        vm.expectEmit();
+        emit StartedEarning(alice);
+        token.mint(alice, INITIAL_SUPPLY);
+
+        // Trigger interest calculation
+        vm.warp(block.timestamp + 365 days);
+        token.updateInterest(alice);
+
+        uint256 expectedFinalBalance = INITIAL_SUPPLY + ((INITIAL_SUPPLY * INTEREST_RATE) / 10000);
+        assertEq(token.totalBalance(alice), expectedFinalBalance);
     }
 
     /* ============ Helper functions ============ */
