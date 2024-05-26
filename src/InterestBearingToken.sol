@@ -13,7 +13,7 @@ contract InterestBearingToken is ERC20Extended, Owned {
      * @notice Emmited when the account starts earning token
      * @param  account The account that started earning.
      */
-    event StartedEarning(address indexed account);
+    event StartedEarningRewards(address indexed account);
 
     event YearlyRateUpdated(uint16 oldRate, uint16 newRate);
 
@@ -149,7 +149,7 @@ contract InterestBearingToken is ERC20Extended, Owned {
         uint256 timestamp = block.timestamp;
         if (_lastUpdateTimestamp[account_] == 0) {
             _lastUpdateTimestamp[account_] = timestamp;
-            emit StartedEarning(account_);
+            emit StartedEarningRewards(account_);
             return;
         }
 

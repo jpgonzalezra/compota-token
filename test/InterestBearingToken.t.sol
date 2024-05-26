@@ -20,7 +20,7 @@ contract InterestBearingTokenTest is Test {
 
     error InsufficientBalance(uint256 amount);
 
-    event StartedEarning(address indexed account);
+    event StartedEarningRewards(address indexed account);
 
     function setUp() external {
         vm.prank(owner);
@@ -112,7 +112,7 @@ contract InterestBearingTokenTest is Test {
     function testInterestAccrualAfterOneYear() external {
         vm.prank(owner);
         vm.expectEmit();
-        emit StartedEarning(alice);
+        emit StartedEarningRewards(alice);
         token.mint(alice, INITIAL_SUPPLY);
 
         // Trigger interest calculation
