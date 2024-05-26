@@ -191,6 +191,27 @@ contract InterestBearingTokenTest is Test {
         assertEq(token.totalBalance(alice), expectedFinalBalance);
     }
 
+    function testInterestAccrualWithoutBalanceChange() external {
+        uint256 tokensToMint = 10e3;
+        _mint(owner, alice, tokensToMint);
+        uint256 balanceRaw = tokensToMint;
+        vm.warp(block.timestamp + 10 days);
+
+        // Calculate interest for the first 10 days
+        uint256 firstPeriodInterest = (balanceRaw * INTEREST_RATE * 10 days) / (10000 * 365 days);
+        token.updateInterest(alice);
+        assertEq(token.totalBalance(alice), balanceRaw + firstPeriodInterest);
+
+        // Warp time forward without changing the balance
+        vm.warp(block.timestamp + 18 days);
+
+        // Calculate interest for the next 18 days with the same balance
+        uint256 secondPeriodInterest = (balanceRaw * INTEREST_RATE * 18 days) / (10000 * 365 days);
+        token.updateInterest(alice);
+        uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
+        assertEq(token.totalBalance(alice), expectedFinalBalance);
+    }
+
     function testSetYearlyRate() public {
         // Only the owner should be able to set the yearly rate within the valid range
         vm.prank(owner);
