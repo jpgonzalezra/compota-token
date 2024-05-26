@@ -74,6 +74,18 @@ contract InterestBearingToken is ERC20, Owned {
         _updateRewards(account_);
     }
 
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        _updateRewards(msg.sender);
+        _updateRewards(to);
+        return super.transfer(to, amount);
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        _updateRewards(from);
+        _updateRewards(to);
+        return super.transferFrom(from, to, amount);
+    }
+
     function totalBalance(address account_) external view returns (uint256) {
         return this.balanceOf(account_) + accruedInterest[account_];
     }
@@ -88,7 +100,7 @@ contract InterestBearingToken is ERC20, Owned {
             return;
         }
 
-        // We always calculate interest using the raw balance (simple interest)
+        // the interest calculation is using the raw balance
         uint256 rawBalance = this.balanceOf(account_);
 
         // Safe to use unchecked here, since `block.timestamp` is always greater than `lastUpdateTimestamp[account_]`.
