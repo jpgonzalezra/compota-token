@@ -124,17 +124,27 @@ contract InterestBearingToken is ERC20Extended, Owned {
         }
     }
 
-    /// @inheritdoc IERC20
+    /**
+     * @notice Retrieves the total supply of tokens, including unclaimed rewards.
+     * @return totalSupply_ The total supply of tokens, including unclaimed rewards.
+     * @inheritdoc IERC20
+     */
     function totalSupply() external view returns (uint256 totalSupply_) {
-        unchecked {
-            return _totalSupply + unclaimedRewards;
-        }
+        return _totalSupply + unclaimedRewards;
     }
 
+    /**
+     * @notice Updates the rewards for a specific account.
+     * @param account The address of the account to update rewards for.
+     */
     function updateRewards(address account) external {
         _updateRewards(account);
     }
 
+    /**
+     * @notice Claims the accumulated rewards for the sender.
+     * @dev It can only be called by the owner of the rewards.
+     */
     function claimRewards() external {
         _claimRewards(msg.sender);
     }
@@ -157,13 +167,6 @@ contract InterestBearingToken is ERC20Extended, Owned {
         }
 
         emit Transfer(sender_, recipient_, amount_);
-    }
-
-    function _calculateCurrentRewards(address account_) internal view returns (uint256) {
-        if (_lastUpdateTimestamp[account_] == 0) return 0;
-        uint256 timeElapsed = block.timestamp - _lastUpdateTimestamp[account_];
-        uint256 rawBalance = _balances[account_];
-        return (rawBalance * timeElapsed * yearlyRate) / (10_000 * uint256(SECONDS_PER_YEAR));
     }
 
     function _claimRewards(address caller) public {
@@ -211,17 +214,20 @@ contract InterestBearingToken is ERC20Extended, Owned {
             return;
         }
 
-        // the rewards calculation is using the raw balance
-        uint256 rawBalance = _balances[account_];
+        uint256 rewards = _calculateCurrentRewards(account_);
+        _accruedRewards[account_] += _calculateCurrentRewards(account_);
+        unclaimedRewards += rewards;
+        _lastUpdateTimestamp[account_] = block.timestamp;
+    }
 
+    function _calculateCurrentRewards(address account_) internal view returns (uint256) {
+        if (_lastUpdateTimestamp[account_] == 0) return 0;
+        uint256 timeElapsed;
         // Safe to use unchecked here, since `block.timestamp` is always greater than `_lastUpdateTimestamp[account_]`.
         unchecked {
-            uint256 timeElapsed = timestamp - _lastUpdateTimestamp[account_];
-            uint256 rewards = (rawBalance * timeElapsed * yearlyRate) / (10_000 * uint256(SECONDS_PER_YEAR));
-            _accruedRewards[account_] += rewards;
-            unclaimedRewards += rewards;
+            timeElapsed = block.timestamp - _lastUpdateTimestamp[account_];
         }
-        _lastUpdateTimestamp[account_] = block.timestamp;
+        return (_balances[account_] * timeElapsed * yearlyRate) / (10_000 * uint256(SECONDS_PER_YEAR));
     }
 
     /**
