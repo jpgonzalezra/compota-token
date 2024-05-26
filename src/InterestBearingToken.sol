@@ -3,9 +3,12 @@ pragma solidity 0.8.23;
 
 import { Owned } from "solmate/auth/Owned.sol";
 import { ERC20Extended } from "@mzero-labs/ERC20Extended.sol";
+import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
 
-// import { console } from "forge-std/console.sol";
-
+/**
+ * @title InterestBearingToken
+ * @dev ERC20 token that accrues interest over time.
+ */
 contract InterestBearingToken is ERC20Extended, Owned {
     /* ============ Events ============ */
 
@@ -15,25 +18,44 @@ contract InterestBearingToken is ERC20Extended, Owned {
      */
     event StartedEarningRewards(address indexed account);
 
+    /**
+     * @notice Emitted when the yearly rate is updated.
+     * @param oldRate The previous yearly rate in basis points (BPS).
+     * @param newRate The new yearly rate in basis points (BPS).
+     */
     event YearlyRateUpdated(uint16 oldRate, uint16 newRate);
 
+    /**
+     * @notice Emitted when rewards are claimed by an account.
+     * @param account The account that claimed the rewards.
+     * @param rewards The amount of rewards claimed.
+     */
     event RewardsClaimed(address indexed account, uint256 rewards);
 
     /* ============ Structs ============ */
     // nothing for now
 
-    /* ============ Errors ============ */
+    /* ============ Custom Errors ============ */
+
+    /// @notice Error thrown when the yearly rate is invalid.
     error InvalidYearlyRate(uint16 rate);
+
+    /// @notice Error thrown when the balance is insufficient for a specific operation.
     error InsufficientBalance(uint256 amount);
 
     /* ============ Variables ============ */
     /// @notice The number of seconds in a year.
     uint32 internal constant SECONDS_PER_YEAR = 31_536_000;
-    uint16 public constant MIN_YEARLY_RATE = 100; // 1% APY in BPS
-    uint16 public constant MAX_YEARLY_RATE = 4000; // 40% APY as max
+
+    ///@notice The minimum yearly rate of interest in basis points (BPS).
+    uint16 public constant MIN_YEARLY_RATE = 100; // This represents a 1% annual percentage yield (APY).
+
+    ///@notice The maximum yearly rate of interest in basis points (BPS).
+    uint16 public constant MAX_YEARLY_RATE = 4000; // This represents a 40% annual percentage yield (APY).
 
     uint256 internal _totalSupply;
-    uint16 public yearlyRate; // rewards rate in BPS beetween 100 (1%) and 4000 (40%)
+    uint256 public unclaimedRewards;
+    uint16 public yearlyRate;
 
     mapping(address => uint256) internal _balances;
     mapping(address => uint256) internal _lastUpdateTimestamp;
@@ -43,10 +65,19 @@ contract InterestBearingToken is ERC20Extended, Owned {
     // nothing for now
 
     /* ============ Constructor ============ */
+
     constructor(uint16 yearlyRate_) ERC20Extended("IBToken", "IB", 6) Owned(msg.sender) {
         setYearlyRate(yearlyRate_);
     }
 
+    /* ============ Interactive Functions ============ */
+
+    /**
+     * @notice Sets the yearly rate of interest.
+     * @dev Only the owner can call this function. The new rate must be between
+     *      `MIN_YEARLY_RATE` (1% APY) and `MAX_YEARLY_RATE` (40% APY).
+     * @param newRate_ The new interest rate in basis points (BPS).
+     */
     function setYearlyRate(uint16 newRate_) public onlyOwner {
         if (newRate_ < MIN_YEARLY_RATE || newRate_ > MAX_YEARLY_RATE) {
             revert InvalidYearlyRate(newRate_);
@@ -56,7 +87,12 @@ contract InterestBearingToken is ERC20Extended, Owned {
         emit YearlyRateUpdated(oldYearlyRate, newRate_);
     }
 
-    /* ============ Interactive Functions ============ */
+    /**
+     * @notice Mints new tokens to a specified address.
+     * @dev Only the owner can call this function.
+     * @param to_ The address where the new tokens will be sent.
+     * @param amount_ The number of tokens to mint.
+     */
     function mint(address to_, uint256 amount_) external onlyOwner {
         _revertIfInvalidRecipient(to_);
         _revertIfInsufficientAmount(amount_);
@@ -64,6 +100,10 @@ contract InterestBearingToken is ERC20Extended, Owned {
         _mint(to_, amount_);
     }
 
+    /**
+     * @notice Burns tokens from the sender account.
+     * @param amount_ The number of tokens to burn.
+     */
     function burn(uint256 amount_) external {
         _revertIfInsufficientAmount(amount_);
         address caller = msg.sender;
@@ -71,6 +111,31 @@ contract InterestBearingToken is ERC20Extended, Owned {
         _revertIfInsufficientBalance(msg.sender, amount_);
         _burn(caller, amount_);
     }
+
+    /**
+     * @notice Gets the total balance of an account, including accrued rewards.
+     * @param account_ The address of the account to query the balance of.
+     * @return The total balance of the account.
+     * @inheritdoc IERC20
+     */
+    function balanceOf(address account_) external view override returns (uint256) {
+        unchecked {
+            return _balances[account_] + _accruedRewards[account_] + _calculateCurrentRewards(account_);
+        }
+    }
+
+    /// @inheritdoc IERC20
+    function totalSupply() external view returns (uint256 totalSupply_) {
+        unchecked {
+            return _totalSupply + unclaimedRewards;
+        }
+    }
+
+    function claimRewards() external {
+        _claimRewards(msg.sender);
+    }
+
+    /* ============ Internal Interactive Functions ============ */
 
     function _transfer(address sender_, address recipient_, uint256 amount_) internal override {
         _revertIfInvalidRecipient(recipient_);
@@ -90,25 +155,6 @@ contract InterestBearingToken is ERC20Extended, Owned {
         emit Transfer(sender_, recipient_, amount_);
     }
 
-    function balanceOf(address account_) external view override returns (uint256) {
-        unchecked {
-            return _balances[account_] + _accruedRewards[account_] + _calculateCurrentRewards(account_);
-        }
-    }
-
-    function totalSupply() external view returns (uint256 totalSupply_) {
-        unchecked {
-            // return totalNonEarningSupply + totalEarningSupply();
-            return _totalSupply;
-        }
-    }
-
-    function claimRewards() external {
-        _claimRewards(msg.sender);
-    }
-
-    /* ============ Internal Interactive Functions ============ */
-
     function _calculateCurrentRewards(address account_) internal view returns (uint256) {
         if (_lastUpdateTimestamp[account_] == 0) return 0;
         uint256 timeElapsed = block.timestamp - _lastUpdateTimestamp[account_];
@@ -121,6 +167,9 @@ contract InterestBearingToken is ERC20Extended, Owned {
         uint256 rewards = _accruedRewards[caller];
         if (rewards > 0) {
             _accruedRewards[caller] = 0;
+            unchecked {
+                unclaimedRewards -= rewards;
+            }
             _mint(caller, rewards);
             emit RewardsClaimed(caller, rewards);
         }
@@ -166,6 +215,7 @@ contract InterestBearingToken is ERC20Extended, Owned {
             uint256 timeElapsed = timestamp - _lastUpdateTimestamp[account_];
             uint256 rewards = (rawBalance * timeElapsed * yearlyRate) / (10_000 * uint256(SECONDS_PER_YEAR));
             _accruedRewards[account_] += rewards;
+            unclaimedRewards += rewards;
         }
         _lastUpdateTimestamp[account_] = block.timestamp;
     }
