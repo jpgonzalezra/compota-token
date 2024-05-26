@@ -247,6 +247,40 @@ contract InterestBearingTokenTest is Test {
         new InterestBearingToken(50000);
     }
 
+    function testInterestAccumulationAfterTransfer() external {
+        _mint(owner, alice, INITIAL_SUPPLY);
+        uint256 aliceBalanceRaw = INITIAL_SUPPLY;
+        vm.warp(block.timestamp + 180 days);
+
+        // Calculate interest for the first 180 days
+        uint256 firstPeriodInterestAlice = (aliceBalanceRaw * INTEREST_RATE * 180 days) / (10000 * 365 days);
+        token.updateInterest(alice);
+        assertEq(token.totalBalance(alice), aliceBalanceRaw + firstPeriodInterestAlice);
+
+        // Transfer tokens from Alice to Bob
+        _transfer(alice, bob, TRANSFER_AMOUNT);
+        aliceBalanceRaw -= TRANSFER_AMOUNT;
+        uint256 bobBalanceRaw = TRANSFER_AMOUNT;
+        assertEq(token.balanceOf(alice), aliceBalanceRaw);
+        assertEq(token.balanceOf(bob), TRANSFER_AMOUNT);
+
+        // Calculate interest for the next 185 days with updated balance
+        vm.warp(block.timestamp + 185 days);
+
+        // Update interests for Alice and Bob
+        token.updateInterest(alice);
+        token.updateInterest(bob);
+
+        uint256 secondPeriodInterestAlice = (aliceBalanceRaw * INTEREST_RATE * 185 days) / (10000 * 365 days);
+        uint256 secondPeriodInterestBob = (bobBalanceRaw * INTEREST_RATE * 185 days) / (10000 * 365 days);
+
+        uint256 expectedFinalBalanceAlice = aliceBalanceRaw + firstPeriodInterestAlice + secondPeriodInterestAlice;
+        uint256 expectedFinalBalanceBob = bobBalanceRaw + secondPeriodInterestBob;
+
+        assertEq(token.totalBalance(alice), expectedFinalBalanceAlice);
+        assertEq(token.totalBalance(bob), expectedFinalBalanceBob);
+    }
+
     /* ============ Helper functions ============ */
 
     function _mint(address minter, address to, uint256 amount) internal {
