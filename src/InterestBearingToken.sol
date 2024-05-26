@@ -15,13 +15,16 @@ contract InterestBearingToken is ERC20, Owned {
      */
     event StartedEarning(address indexed account);
 
+    event YearlyRateUpdated(uint16 oldRate, uint16 newRate);
+
     /* ============ Structs ============ */
     // nothing for now
 
     /* ============ Errors ============ */
-    error InvalidRecipient(address recipient_);
-    error InvalidYearlyRate(uint16 rate_);
-    error InsufficientAmount(uint256 amount_);
+    error InvalidRecipient(address recipient);
+    error InvalidYearlyRate(uint16 rate);
+    error InsufficientAmount(uint256 amount);
+    error InsufficientBalance(uint256 amount);
 
     /* ============ Variables ============ */
     /// @notice The number of seconds in a year.
@@ -46,7 +49,9 @@ contract InterestBearingToken is ERC20, Owned {
         if (newRate_ < MIN_YEARLY_RATE || newRate_ > MAX_YEARLY_RATE) {
             revert InvalidYearlyRate(newRate_);
         }
+        uint16 oldYearlyRate = yearlyRate;
         yearlyRate = newRate_;
+        emit YearlyRateUpdated(oldYearlyRate, newRate_);
     }
 
     /* ============ Interactive Functions ============ */
@@ -59,7 +64,7 @@ contract InterestBearingToken is ERC20, Owned {
 
     function burn(uint256 amount_) external {
         _revertIfInsufficientAmount(amount_);
-        if (this.balanceOf(msg.sender) < amount_) revert InsufficientAmount(amount_);
+        _revertIfInsufficientBalance(msg.sender, amount_);
         address caller = msg.sender;
         _updateRewards(caller);
         _burn(caller, amount_);
@@ -93,6 +98,16 @@ contract InterestBearingToken is ERC20, Owned {
             accruedInterest[account_] += interest;
         }
         lastUpdateTimestamp[account_] = block.timestamp;
+    }
+
+    /**
+     * @dev   Reverts if the balance is insufficient.
+     * @param caller_ Caller
+     * @param amount_ Balance to check.
+     */
+    function _revertIfInsufficientBalance(address caller_, uint256 amount_) internal view {
+        uint256 balance = this.balanceOf(caller_);
+        if (balance < amount_) revert InsufficientBalance(amount_);
     }
 
     /**
