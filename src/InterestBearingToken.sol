@@ -70,7 +70,7 @@ contract InterestBearingToken is ERC20Extended, Owned {
         _burn(caller, amount_);
     }
 
-    function updateInterest(address account_) external {
+    function updateRewards(address account_) external {
         _updateRewards(account_);
     }
 
