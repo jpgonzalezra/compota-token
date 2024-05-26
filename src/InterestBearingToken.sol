@@ -131,6 +131,10 @@ contract InterestBearingToken is ERC20Extended, Owned {
         }
     }
 
+    function updateRewards(address account) external {
+        _updateRewards(account);
+    }
+
     function claimRewards() external {
         _claimRewards(msg.sender);
     }

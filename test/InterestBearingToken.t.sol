@@ -118,7 +118,7 @@ contract InterestBearingTokenTest is Test {
         // Trigger interest calculation
         vm.warp(block.timestamp + 365 days);
 
-        uint interest = (INITIAL_SUPPLY * INTEREST_RATE * 365 days) / (10000 * 365 days);
+        uint interest = (INITIAL_SUPPLY * INTEREST_RATE * 365 days) / (10_000 * 365 days);
         uint256 expectedFinalBalance = INITIAL_SUPPLY + interest;
         assertEq(token.balanceOf(alice), expectedFinalBalance);
     }
@@ -129,14 +129,14 @@ contract InterestBearingTokenTest is Test {
         vm.warp(block.timestamp + 180 days);
 
         // Calculate interest for the first 180 days
-        uint256 firstPeriodInterest = (balanceRaw * INTEREST_RATE * 180 days) / (10000 * 365 days);
+        uint256 firstPeriodInterest = (balanceRaw * INTEREST_RATE * 180 days) / (10_000 * 365 days);
         _mint(owner, alice, INITIAL_SUPPLY);
         balanceRaw += INITIAL_SUPPLY;
 
         vm.warp(block.timestamp + 185 days); // total 365 days from first mint
 
         // Calculate interest for the next 185 days with updated balance
-        uint256 secondPeriodInterest = (balanceRaw * INTEREST_RATE * 185 days) / (10000 * 365 days);
+        uint256 secondPeriodInterest = (balanceRaw * INTEREST_RATE * 185 days) / (10_000 * 365 days);
 
         // The expected final balance includes the initial supplies and accrued interests
         uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
@@ -175,7 +175,7 @@ contract InterestBearingTokenTest is Test {
         // Claim rewards again after the next 30 days with the new rate
         vm.prank(alice);
         token.claimRewards();
-        uint256 secondPeriodInterest = (balanceRaw * newRate * 30 days) / (10000 * 365 days);
+        uint256 secondPeriodInterest = (balanceRaw * newRate * 30 days) / (10_000 * 365 days);
         balanceRaw += secondPeriodInterest;
 
         // Expected final balance should include all interests claimed
@@ -190,14 +190,14 @@ contract InterestBearingTokenTest is Test {
         vm.warp(block.timestamp + 10 days);
 
         // Calculate interest for the first 10 days
-        uint256 firstPeriodInterest = (balanceRaw * INTEREST_RATE * 10 days) / (10000 * 365 days);
+        uint256 firstPeriodInterest = (balanceRaw * INTEREST_RATE * 10 days) / (10_000 * 365 days);
         assertEq(token.balanceOf(alice), balanceRaw + firstPeriodInterest);
 
         // Warp time forward without changing the balance
         vm.warp(block.timestamp + 18 days);
 
         // Calculate interest for the next 18 days with the same balance
-        uint256 secondPeriodInterest = (balanceRaw * INTEREST_RATE * 18 days) / (10000 * 365 days);
+        uint256 secondPeriodInterest = (balanceRaw * INTEREST_RATE * 18 days) / (10_000 * 365 days);
         uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
         assertEq(token.balanceOf(alice), expectedFinalBalance);
     }
@@ -243,7 +243,7 @@ contract InterestBearingTokenTest is Test {
         vm.warp(block.timestamp + 180 days);
 
         // Calculate interest for the first 180 days
-        uint256 firstPeriodInterestAlice = (aliceBalanceRaw * INTEREST_RATE * 180 days) / (10000 * 365 days);
+        uint256 firstPeriodInterestAlice = (aliceBalanceRaw * INTEREST_RATE * 180 days) / (10_000 * 365 days);
 
         // Transfer tokens from Alice to Bob
         _transfer(alice, bob, TRANSFER_AMOUNT);
@@ -266,14 +266,31 @@ contract InterestBearingTokenTest is Test {
         vm.prank(bob);
         token.claimRewards();
 
-        uint256 secondPeriodInterestAlice = (aliceTotalBalance * INTEREST_RATE * 185 days) / (10000 * 365 days);
-        uint256 secondPeriodInterestBob = (bobBalanceRaw * INTEREST_RATE * 185 days) / (10000 * 365 days);
+        uint256 secondPeriodInterestAlice = (aliceTotalBalance * INTEREST_RATE * 185 days) / (10_000 * 365 days);
+        uint256 secondPeriodInterestBob = (bobBalanceRaw * INTEREST_RATE * 185 days) / (10_000 * 365 days);
 
         uint256 expectedFinalBalanceAlice = aliceTotalBalance + secondPeriodInterestAlice;
         uint256 expectedFinalBalanceBob = bobBalanceRaw + secondPeriodInterestBob;
 
         assertEq(token.balanceOf(alice), expectedFinalBalanceAlice);
         assertEq(token.balanceOf(bob), expectedFinalBalanceBob);
+    }
+
+    function testTotalSupplyWithUnclaimedRewards() external {
+        uint256 initialMint = 1000 * 10e6; // Initial mint amount
+
+        _mint(owner, alice, initialMint);
+        assertEq(token.totalSupply(), initialMint);
+
+        vm.warp(block.timestamp + 180 days);
+        token.updateRewards(alice);
+
+        // Calculate expected rewards for 180 days with the initial rate
+        uint256 expectedRewards = (initialMint * INTEREST_RATE * 180 days) / (10_000 * 365 days);
+
+        // Verify total supply includes unclaimed rewards
+        assertEq(token.unclaimedRewards(), expectedRewards);
+        assertEq(token.totalSupply(), initialMint + expectedRewards);
     }
 
     /* ============ Helper functions ============ */
