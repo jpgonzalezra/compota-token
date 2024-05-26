@@ -14,7 +14,10 @@ contract InterestBearingToken is ERC20Extended, Owned {
      * @param  account The account that started earning.
      */
     event StartedEarning(address indexed account);
+
     event YearlyRateUpdated(uint16 oldRate, uint16 newRate);
+
+    event RewardsClaimed(address indexed account, uint256 rewards);
 
     /* ============ Structs ============ */
     // nothing for now
@@ -111,8 +114,11 @@ contract InterestBearingToken is ERC20Extended, Owned {
     function _claimRewards(address caller) public {
         _updateRewards(caller);
         uint256 rewards = _accruedRewards[caller];
-        _accruedRewards[caller] = 0;
-        _mint(caller, rewards);
+        if (rewards > 0) {
+            _accruedRewards[caller] = 0;
+            _mint(caller, rewards);
+            emit RewardsClaimed(caller, rewards);
+        }
     }
 
     function _mint(address to, uint256 amount) internal virtual {
