@@ -21,8 +21,9 @@ contract InterestBearingTokenTest is Test {
     uint256 constant INSUFFICIENT_AMOUNT = 0;
     uint16 constant INTEREST_RATE = 1000; // 10% APY in BPS
 
-    error InvalidRecipient(address recipient_);
-    error InsufficientAmount(uint256 amount_);
+    error InvalidRecipient(address recipient);
+    error InsufficientAmount(uint256 amount);
+    error InsufficientBalance(uint256 amount);
 
     event StartedEarning(address indexed account);
 
@@ -88,7 +89,7 @@ contract InterestBearingTokenTest is Test {
         _mint(owner, alice, INITIAL_SUPPLY);
         uint256 valueToBurn = INITIAL_SUPPLY + BURN_AMOUNT;
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(InsufficientAmount.selector, valueToBurn));
+        vm.expectRevert(abi.encodeWithSelector(InsufficientBalance.selector, valueToBurn));
         token.burn(valueToBurn);
     }
 
@@ -146,6 +147,45 @@ contract InterestBearingTokenTest is Test {
         uint256 secondPeriodInterest = (balanceRaw * INTEREST_RATE * 185 days) / (10000 * 365 days);
 
         // The expected final balance includes the initial supplies and accrued interests
+        token.updateInterest(alice);
+        uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
+        assertEq(token.totalBalance(alice), expectedFinalBalance);
+    }
+
+    function testInterestAccrualWithRateChange() external {
+        uint16 initialRate = 1000; // 10% APY
+        uint16 newRate = 500; // 5% APY
+
+        vm.prank(owner);
+        token.setYearlyRate(initialRate);
+
+        // First mint and time warp
+        _mint(owner, alice, INITIAL_SUPPLY);
+        uint256 balanceRaw = INITIAL_SUPPLY;
+        assertEq(token.balanceOf(alice), balanceRaw);
+        vm.warp(block.timestamp + 180 days);
+
+        // Calculate interest for the first 180 days with the initial rate
+        token.updateInterest(alice);
+        uint256 firstPeriodInterest = (balanceRaw * initialRate * 180 days) / (10_000 * 365 days);
+        assertEq(token.totalBalance(alice), balanceRaw + firstPeriodInterest);
+
+        // Change the interest rate midway
+        vm.prank(owner);
+        token.setYearlyRate(newRate);
+
+        // Second mint and balance update
+        uint256 tokensToMint = 500 * 10e6;
+        _mint(owner, alice, tokensToMint);
+        balanceRaw += tokensToMint;
+        assertEq(token.balanceOf(alice), balanceRaw);
+
+        vm.warp(block.timestamp + 30 days);
+
+        // Calculate interest for the next 30 days with the new rate
+        uint256 secondPeriodInterest = (balanceRaw * newRate * 30 days) / (10000 * 365 days);
+
+        // // Update interests and verify the final balance
         token.updateInterest(alice);
         uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
         assertEq(token.totalBalance(alice), expectedFinalBalance);
