@@ -30,11 +30,11 @@ contract InterestBearingToken is ERC20Extended, Owned {
     uint16 public constant MAX_YEARLY_RATE = 4000; // 40% APY as max
 
     uint256 internal _totalSupply;
-    uint16 public yearlyRate; // interest rate in BPS beetween 100 (1%) and 40000 (40%)
+    uint16 public yearlyRate; // rewards rate in BPS beetween 100 (1%) and 4000 (40%)
 
     mapping(address => uint256) internal _balances;
     mapping(address => uint256) internal _lastUpdateTimestamp;
-    mapping(address => uint256) internal _accruedInterest;
+    mapping(address => uint256) internal _accruedRewards;
 
     /* ============ Modifiers ============ */
     // nothing for now
@@ -63,10 +63,9 @@ contract InterestBearingToken is ERC20Extended, Owned {
 
     function burn(uint256 amount_) external {
         _revertIfInsufficientAmount(amount_);
-        //claimRewards ?
-        _revertIfInsufficientBalance(msg.sender, amount_);
         address caller = msg.sender;
-        _updateRewards(caller);
+        _claimRewards(caller);
+        _revertIfInsufficientBalance(msg.sender, amount_);
         _burn(caller, amount_);
     }
 
@@ -77,8 +76,9 @@ contract InterestBearingToken is ERC20Extended, Owned {
     function _transfer(address sender_, address recipient_, uint256 amount_) internal override {
         _revertIfInvalidRecipient(recipient_);
 
-        _updateRewards(sender_);
-        _updateRewards(recipient_);
+        // Claim rewards for both sender and recipient
+        _claimRewards(sender_);
+        _claimRewards(recipient_);
 
         _balances[sender_] -= amount_;
 
@@ -92,7 +92,7 @@ contract InterestBearingToken is ERC20Extended, Owned {
     }
 
     function balanceOf(address account_) external view override returns (uint256) {
-        return _balances[account_] + _accruedInterest[account_];
+        return _balances[account_] + _accruedRewards[account_];
     }
 
     function totalSupply() external view returns (uint256 totalSupply_) {
@@ -102,7 +102,18 @@ contract InterestBearingToken is ERC20Extended, Owned {
         }
     }
 
+    function claimRewards() external {
+        _claimRewards(msg.sender);
+    }
+
     /* ============ Internal Interactive Functions ============ */
+
+    function _claimRewards(address caller) public {
+        _updateRewards(caller);
+        uint256 rewards = _accruedRewards[caller];
+        _accruedRewards[caller] = 0;
+        _mint(caller, rewards);
+    }
 
     function _mint(address to, uint256 amount) internal virtual {
         _totalSupply += amount;
@@ -136,14 +147,14 @@ contract InterestBearingToken is ERC20Extended, Owned {
             return;
         }
 
-        // the interest calculation is using the raw balance
+        // the rewards calculation is using the raw balance
         uint256 rawBalance = _balances[account_];
 
         // Safe to use unchecked here, since `block.timestamp` is always greater than `_lastUpdateTimestamp[account_]`.
         unchecked {
             uint256 timeElapsed = timestamp - _lastUpdateTimestamp[account_];
-            uint256 interest = (rawBalance * timeElapsed * yearlyRate) / (10_000 * uint256(SECONDS_PER_YEAR));
-            _accruedInterest[account_] += interest;
+            uint256 rewards = (rawBalance * timeElapsed * yearlyRate) / (10_000 * uint256(SECONDS_PER_YEAR));
+            _accruedRewards[account_] += rewards;
         }
         _lastUpdateTimestamp[account_] = block.timestamp;
     }

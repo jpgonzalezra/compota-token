@@ -244,24 +244,32 @@ contract InterestBearingTokenTest is Test {
 
         // Calculate interest for the first 180 days
         uint256 firstPeriodInterestAlice = (aliceBalanceRaw * INTEREST_RATE * 180 days) / (10000 * 365 days);
-        token.updateRewards(alice);
 
         // Transfer tokens from Alice to Bob
         _transfer(alice, bob, TRANSFER_AMOUNT);
         aliceBalanceRaw -= TRANSFER_AMOUNT;
         uint256 bobBalanceRaw = TRANSFER_AMOUNT;
 
+        // Alice claims rewards after the first 180 days before the transfer
+        vm.prank(alice);
+        token.claimRewards();
+
+        // Update Alice's balance to include the first period interest
+        uint256 aliceTotalBalance = aliceBalanceRaw + firstPeriodInterestAlice;
+
         // Calculate interest for the next 185 days with updated balance
         vm.warp(block.timestamp + 185 days);
 
         // Update interests for Alice and Bob
-        token.updateRewards(alice);
-        token.updateRewards(bob);
+        vm.prank(alice);
+        token.claimRewards();
+        vm.prank(bob);
+        token.claimRewards();
 
-        uint256 secondPeriodInterestAlice = (aliceBalanceRaw * INTEREST_RATE * 185 days) / (10000 * 365 days);
+        uint256 secondPeriodInterestAlice = (aliceTotalBalance * INTEREST_RATE * 185 days) / (10000 * 365 days);
         uint256 secondPeriodInterestBob = (bobBalanceRaw * INTEREST_RATE * 185 days) / (10000 * 365 days);
 
-        uint256 expectedFinalBalanceAlice = aliceBalanceRaw + firstPeriodInterestAlice + secondPeriodInterestAlice;
+        uint256 expectedFinalBalanceAlice = aliceTotalBalance + secondPeriodInterestAlice;
         uint256 expectedFinalBalanceBob = bobBalanceRaw + secondPeriodInterestBob;
 
         assertEq(token.balanceOf(alice), expectedFinalBalanceAlice);
