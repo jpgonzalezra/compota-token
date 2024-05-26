@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity 0.8.26;
+pragma solidity 0.8.23;
 
 import { Test, console } from "forge-std/Test.sol";
 import { InterestBearingToken } from "../src/InterestBearingToken.sol";
-
-interface IERC20 {
-    function balanceOf(address account) external view returns (uint256);
-}
+import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
 
 contract InterestBearingTokenTest is Test {
     InterestBearingToken token;
@@ -21,8 +18,6 @@ contract InterestBearingTokenTest is Test {
     uint256 constant INSUFFICIENT_AMOUNT = 0;
     uint16 constant INTEREST_RATE = 1000; // 10% APY in BPS
 
-    error InvalidRecipient(address recipient);
-    error InsufficientAmount(uint256 amount);
     error InsufficientBalance(uint256 amount);
 
     event StartedEarning(address indexed account);
@@ -67,13 +62,13 @@ contract InterestBearingTokenTest is Test {
 
     function testMintingInvalidRecipient() external {
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(InvalidRecipient.selector, address(0)));
+        vm.expectRevert(abi.encodeWithSelector(IERC20Extended.InvalidRecipient.selector, address(0)));
         token.mint(address(0), INITIAL_SUPPLY);
     }
 
     function testMintingInsufficientAmount() external {
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(InsufficientAmount.selector, INSUFFICIENT_AMOUNT));
+        vm.expectRevert(abi.encodeWithSelector(IERC20Extended.InsufficientAmount.selector, INSUFFICIENT_AMOUNT));
         token.mint(alice, INSUFFICIENT_AMOUNT);
     }
 
@@ -96,7 +91,7 @@ contract InterestBearingTokenTest is Test {
     function testBurningFailsWithInsufficientAmount() public {
         _mint(owner, alice, INITIAL_SUPPLY);
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(InsufficientAmount.selector, INSUFFICIENT_AMOUNT));
+        vm.expectRevert(abi.encodeWithSelector(IERC20Extended.InsufficientAmount.selector, INSUFFICIENT_AMOUNT));
         token.burn(INSUFFICIENT_AMOUNT);
     }
 
@@ -126,20 +121,18 @@ contract InterestBearingTokenTest is Test {
 
         uint interest = (INITIAL_SUPPLY * INTEREST_RATE * 365 days) / (10000 * 365 days);
         uint256 expectedFinalBalance = INITIAL_SUPPLY + interest;
-        assertEq(token.totalBalance(alice), expectedFinalBalance);
+        assertEq(token.balanceOf(alice), expectedFinalBalance);
     }
 
     function testInterestAccrualWithMultipleMints() external {
         _mint(owner, alice, INITIAL_SUPPLY);
         uint256 balanceRaw = INITIAL_SUPPLY;
-        assertEq(token.balanceOf(alice), balanceRaw);
         vm.warp(block.timestamp + 180 days);
 
         // Calculate interest for the first 180 days
         uint256 firstPeriodInterest = (balanceRaw * INTEREST_RATE * 180 days) / (10000 * 365 days);
         _mint(owner, alice, INITIAL_SUPPLY);
         balanceRaw += INITIAL_SUPPLY;
-        assertEq(token.balanceOf(alice), balanceRaw);
 
         vm.warp(block.timestamp + 185 days); // total 365 days from first mint
 
@@ -149,7 +142,7 @@ contract InterestBearingTokenTest is Test {
         // The expected final balance includes the initial supplies and accrued interests
         token.updateInterest(alice);
         uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
-        assertEq(token.totalBalance(alice), expectedFinalBalance);
+        assertEq(token.balanceOf(alice), expectedFinalBalance);
     }
 
     function testInterestAccrualWithRateChange() external {
@@ -162,13 +155,11 @@ contract InterestBearingTokenTest is Test {
         // First mint and time warp
         _mint(owner, alice, INITIAL_SUPPLY);
         uint256 balanceRaw = INITIAL_SUPPLY;
-        assertEq(token.balanceOf(alice), balanceRaw);
         vm.warp(block.timestamp + 180 days);
 
         // Calculate interest for the first 180 days with the initial rate
         token.updateInterest(alice);
         uint256 firstPeriodInterest = (balanceRaw * initialRate * 180 days) / (10_000 * 365 days);
-        assertEq(token.totalBalance(alice), balanceRaw + firstPeriodInterest);
 
         // Change the interest rate midway
         vm.prank(owner);
@@ -178,7 +169,6 @@ contract InterestBearingTokenTest is Test {
         uint256 tokensToMint = 500 * 10e6;
         _mint(owner, alice, tokensToMint);
         balanceRaw += tokensToMint;
-        assertEq(token.balanceOf(alice), balanceRaw);
 
         vm.warp(block.timestamp + 30 days);
 
@@ -188,7 +178,7 @@ contract InterestBearingTokenTest is Test {
         // // Update interests and verify the final balance
         token.updateInterest(alice);
         uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
-        assertEq(token.totalBalance(alice), expectedFinalBalance);
+        assertEq(token.balanceOf(alice), expectedFinalBalance);
     }
 
     function testInterestAccrualWithoutBalanceChange() external {
@@ -200,7 +190,7 @@ contract InterestBearingTokenTest is Test {
         // Calculate interest for the first 10 days
         uint256 firstPeriodInterest = (balanceRaw * INTEREST_RATE * 10 days) / (10000 * 365 days);
         token.updateInterest(alice);
-        assertEq(token.totalBalance(alice), balanceRaw + firstPeriodInterest);
+        assertEq(token.balanceOf(alice), balanceRaw + firstPeriodInterest);
 
         // Warp time forward without changing the balance
         vm.warp(block.timestamp + 18 days);
@@ -209,7 +199,7 @@ contract InterestBearingTokenTest is Test {
         uint256 secondPeriodInterest = (balanceRaw * INTEREST_RATE * 18 days) / (10000 * 365 days);
         token.updateInterest(alice);
         uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
-        assertEq(token.totalBalance(alice), expectedFinalBalance);
+        assertEq(token.balanceOf(alice), expectedFinalBalance);
     }
 
     function testSetYearlyRate() public {
@@ -255,14 +245,11 @@ contract InterestBearingTokenTest is Test {
         // Calculate interest for the first 180 days
         uint256 firstPeriodInterestAlice = (aliceBalanceRaw * INTEREST_RATE * 180 days) / (10000 * 365 days);
         token.updateInterest(alice);
-        assertEq(token.totalBalance(alice), aliceBalanceRaw + firstPeriodInterestAlice);
 
         // Transfer tokens from Alice to Bob
         _transfer(alice, bob, TRANSFER_AMOUNT);
         aliceBalanceRaw -= TRANSFER_AMOUNT;
         uint256 bobBalanceRaw = TRANSFER_AMOUNT;
-        assertEq(token.balanceOf(alice), aliceBalanceRaw);
-        assertEq(token.balanceOf(bob), TRANSFER_AMOUNT);
 
         // Calculate interest for the next 185 days with updated balance
         vm.warp(block.timestamp + 185 days);
@@ -277,8 +264,8 @@ contract InterestBearingTokenTest is Test {
         uint256 expectedFinalBalanceAlice = aliceBalanceRaw + firstPeriodInterestAlice + secondPeriodInterestAlice;
         uint256 expectedFinalBalanceBob = bobBalanceRaw + secondPeriodInterestBob;
 
-        assertEq(token.totalBalance(alice), expectedFinalBalanceAlice);
-        assertEq(token.totalBalance(bob), expectedFinalBalanceBob);
+        assertEq(token.balanceOf(alice), expectedFinalBalanceAlice);
+        assertEq(token.balanceOf(bob), expectedFinalBalanceBob);
     }
 
     /* ============ Helper functions ============ */

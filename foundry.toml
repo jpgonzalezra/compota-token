@@ -3,7 +3,7 @@ gas_reports = ["InterestBearingToken"]
 gas_reports_ignore = []
 ignored_error_codes = []
 optimizer = false
-solc_version = "0.8.26"
+solc_version = "0.8.23"
 verbosity = 3
 
 [profile.production]

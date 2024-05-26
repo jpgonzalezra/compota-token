@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "forge-std": "github:foundry-rs/forge-std#v1.8.1",
+    "common": "github:@mzero-labs/common#main",
     "husky": "^9.0.11",
     "lint-staged": "^15.2.2",
     "prettier": "^3.2.5",

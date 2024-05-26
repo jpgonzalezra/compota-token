@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity 0.8.26;
+pragma solidity 0.8.23;
 
-import { ERC20 } from "solmate/tokens/ERC20.sol";
 import { Owned } from "solmate/auth/Owned.sol";
+import { ERC20Extended } from "@mzero-labs/ERC20Extended.sol";
 
 // import { console } from "forge-std/console.sol";
 
-contract InterestBearingToken is ERC20, Owned {
+contract InterestBearingToken is ERC20Extended, Owned {
     /* ============ Events ============ */
 
     /**
@@ -14,16 +14,13 @@ contract InterestBearingToken is ERC20, Owned {
      * @param  account The account that started earning.
      */
     event StartedEarning(address indexed account);
-
     event YearlyRateUpdated(uint16 oldRate, uint16 newRate);
 
     /* ============ Structs ============ */
     // nothing for now
 
     /* ============ Errors ============ */
-    error InvalidRecipient(address recipient);
     error InvalidYearlyRate(uint16 rate);
-    error InsufficientAmount(uint256 amount);
     error InsufficientBalance(uint256 amount);
 
     /* ============ Variables ============ */
@@ -32,16 +29,18 @@ contract InterestBearingToken is ERC20, Owned {
     uint16 public constant MIN_YEARLY_RATE = 100; // 1% APY in BPS
     uint16 public constant MAX_YEARLY_RATE = 4000; // 40% APY as max
 
+    uint256 internal _totalSupply;
     uint16 public yearlyRate; // interest rate in BPS beetween 100 (1%) and 40000 (40%)
 
-    mapping(address => uint256) internal lastUpdateTimestamp;
-    mapping(address => uint256) internal accruedInterest;
+    mapping(address => uint256) internal _balances;
+    mapping(address => uint256) internal _lastUpdateTimestamp;
+    mapping(address => uint256) internal _accruedInterest;
 
     /* ============ Modifiers ============ */
     // nothing for now
 
     /* ============ Constructor ============ */
-    constructor(uint16 yearlyRate_) ERC20("IBToken", "IB", 6) Owned(msg.sender) {
+    constructor(uint16 yearlyRate_) ERC20Extended("IBToken", "IB", 6) Owned(msg.sender) {
         setYearlyRate(yearlyRate_);
     }
 
@@ -64,6 +63,7 @@ contract InterestBearingToken is ERC20, Owned {
 
     function burn(uint256 amount_) external {
         _revertIfInsufficientAmount(amount_);
+        //claimRewards ?
         _revertIfInsufficientBalance(msg.sender, amount_);
         address caller = msg.sender;
         _updateRewards(caller);
@@ -74,42 +74,78 @@ contract InterestBearingToken is ERC20, Owned {
         _updateRewards(account_);
     }
 
-    function transfer(address to, uint256 amount) public override returns (bool) {
-        _updateRewards(msg.sender);
-        _updateRewards(to);
-        return super.transfer(to, amount);
+    function _transfer(address sender_, address recipient_, uint256 amount_) internal override {
+        _revertIfInvalidRecipient(recipient_);
+
+        _updateRewards(sender_);
+        _updateRewards(recipient_);
+
+        _balances[sender_] -= amount_;
+
+        // Cannot overflow because the sum of all user
+        // balances can't exceed the max uint256 value.
+        unchecked {
+            _balances[recipient_] += amount_;
+        }
+
+        emit Transfer(sender_, recipient_, amount_);
     }
 
-    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
-        _updateRewards(from);
-        _updateRewards(to);
-        return super.transferFrom(from, to, amount);
+    function balanceOf(address account_) external view override returns (uint256) {
+        return _balances[account_] + _accruedInterest[account_];
     }
 
-    function totalBalance(address account_) external view returns (uint256) {
-        return this.balanceOf(account_) + accruedInterest[account_];
+    function totalSupply() external view returns (uint256 totalSupply_) {
+        unchecked {
+            // return totalNonEarningSupply + totalEarningSupply();
+            return _totalSupply;
+        }
     }
 
     /* ============ Internal Interactive Functions ============ */
 
+    function _mint(address to, uint256 amount) internal virtual {
+        _totalSupply += amount;
+
+        // Cannot overflow because the sum of all user
+        // balances can't exceed the max uint256 value.
+        unchecked {
+            _balances[to] += amount;
+        }
+
+        emit Transfer(address(0), to, amount);
+    }
+
+    function _burn(address from, uint256 amount) internal virtual {
+        _balances[from] -= amount;
+
+        // Cannot underflow because a user's balance
+        // will never be larger than the total supply.
+        unchecked {
+            _totalSupply -= amount;
+        }
+
+        emit Transfer(from, address(0), amount);
+    }
+
     function _updateRewards(address account_) internal {
         uint256 timestamp = block.timestamp;
-        if (lastUpdateTimestamp[account_] == 0) {
-            lastUpdateTimestamp[account_] = timestamp;
+        if (_lastUpdateTimestamp[account_] == 0) {
+            _lastUpdateTimestamp[account_] = timestamp;
             emit StartedEarning(account_);
             return;
         }
 
         // the interest calculation is using the raw balance
-        uint256 rawBalance = this.balanceOf(account_);
+        uint256 rawBalance = _balances[account_];
 
-        // Safe to use unchecked here, since `block.timestamp` is always greater than `lastUpdateTimestamp[account_]`.
+        // Safe to use unchecked here, since `block.timestamp` is always greater than `_lastUpdateTimestamp[account_]`.
         unchecked {
-            uint256 timeElapsed = timestamp - lastUpdateTimestamp[account_];
+            uint256 timeElapsed = timestamp - _lastUpdateTimestamp[account_];
             uint256 interest = (rawBalance * timeElapsed * yearlyRate) / (10_000 * uint256(SECONDS_PER_YEAR));
-            accruedInterest[account_] += interest;
+            _accruedInterest[account_] += interest;
         }
-        lastUpdateTimestamp[account_] = block.timestamp;
+        _lastUpdateTimestamp[account_] = block.timestamp;
     }
 
     /**
@@ -118,7 +154,7 @@ contract InterestBearingToken is ERC20, Owned {
      * @param amount_ Balance to check.
      */
     function _revertIfInsufficientBalance(address caller_, uint256 amount_) internal view {
-        uint256 balance = this.balanceOf(caller_);
+        uint256 balance = _balances[caller_];
         if (balance < amount_) revert InsufficientBalance(amount_);
     }
 
