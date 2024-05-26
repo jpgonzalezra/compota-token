@@ -117,7 +117,6 @@ contract InterestBearingTokenTest is Test {
 
         // Trigger interest calculation
         vm.warp(block.timestamp + 365 days);
-        token.updateRewards(alice);
 
         uint interest = (INITIAL_SUPPLY * INTEREST_RATE * 365 days) / (10000 * 365 days);
         uint256 expectedFinalBalance = INITIAL_SUPPLY + interest;
@@ -140,7 +139,6 @@ contract InterestBearingTokenTest is Test {
         uint256 secondPeriodInterest = (balanceRaw * INTEREST_RATE * 185 days) / (10000 * 365 days);
 
         // The expected final balance includes the initial supplies and accrued interests
-        token.updateRewards(alice);
         uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
         assertEq(token.balanceOf(alice), expectedFinalBalance);
     }
@@ -157,11 +155,13 @@ contract InterestBearingTokenTest is Test {
         uint256 balanceRaw = INITIAL_SUPPLY;
         vm.warp(block.timestamp + 180 days);
 
-        // Calculate interest for the first 180 days with the initial rate
-        token.updateRewards(alice);
+        // Claim rewards and update balance after the first 180 days with the initial rate
+        vm.prank(alice);
+        token.claimRewards();
         uint256 firstPeriodInterest = (balanceRaw * initialRate * 180 days) / (10_000 * 365 days);
+        balanceRaw += firstPeriodInterest;
 
-        // Change the interest rate midway
+        // Change the interest rate
         vm.prank(owner);
         token.setYearlyRate(newRate);
 
@@ -172,12 +172,14 @@ contract InterestBearingTokenTest is Test {
 
         vm.warp(block.timestamp + 30 days);
 
-        // Calculate interest for the next 30 days with the new rate
+        // Claim rewards again after the next 30 days with the new rate
+        vm.prank(alice);
+        token.claimRewards();
         uint256 secondPeriodInterest = (balanceRaw * newRate * 30 days) / (10000 * 365 days);
+        balanceRaw += secondPeriodInterest;
 
-        // // Update interests and verify the final balance
-        token.updateRewards(alice);
-        uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
+        // Expected final balance should include all interests claimed
+        uint256 expectedFinalBalance = balanceRaw;
         assertEq(token.balanceOf(alice), expectedFinalBalance);
     }
 
@@ -189,7 +191,6 @@ contract InterestBearingTokenTest is Test {
 
         // Calculate interest for the first 10 days
         uint256 firstPeriodInterest = (balanceRaw * INTEREST_RATE * 10 days) / (10000 * 365 days);
-        token.updateRewards(alice);
         assertEq(token.balanceOf(alice), balanceRaw + firstPeriodInterest);
 
         // Warp time forward without changing the balance
@@ -197,7 +198,6 @@ contract InterestBearingTokenTest is Test {
 
         // Calculate interest for the next 18 days with the same balance
         uint256 secondPeriodInterest = (balanceRaw * INTEREST_RATE * 18 days) / (10000 * 365 days);
-        token.updateRewards(alice);
         uint256 expectedFinalBalance = balanceRaw + firstPeriodInterest + secondPeriodInterest;
         assertEq(token.balanceOf(alice), expectedFinalBalance);
     }

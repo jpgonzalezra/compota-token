@@ -72,10 +72,6 @@ contract InterestBearingToken is ERC20Extended, Owned {
         _burn(caller, amount_);
     }
 
-    function updateRewards(address account_) external {
-        _updateRewards(account_);
-    }
-
     function _transfer(address sender_, address recipient_, uint256 amount_) internal override {
         _revertIfInvalidRecipient(recipient_);
 
@@ -95,7 +91,9 @@ contract InterestBearingToken is ERC20Extended, Owned {
     }
 
     function balanceOf(address account_) external view override returns (uint256) {
-        return _balances[account_] + _accruedRewards[account_];
+        unchecked {
+            return _balances[account_] + _accruedRewards[account_] + _calculateCurrentRewards(account_);
+        }
     }
 
     function totalSupply() external view returns (uint256 totalSupply_) {
@@ -110,6 +108,13 @@ contract InterestBearingToken is ERC20Extended, Owned {
     }
 
     /* ============ Internal Interactive Functions ============ */
+
+    function _calculateCurrentRewards(address account_) internal view returns (uint256) {
+        if (_lastUpdateTimestamp[account_] == 0) return 0;
+        uint256 timeElapsed = block.timestamp - _lastUpdateTimestamp[account_];
+        uint256 rawBalance = _balances[account_];
+        return (rawBalance * timeElapsed * yearlyRate) / (10_000 * uint256(SECONDS_PER_YEAR));
+    }
 
     function _claimRewards(address caller) public {
         _updateRewards(caller);
