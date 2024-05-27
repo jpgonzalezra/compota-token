@@ -144,18 +144,18 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
     /**
      * @notice Claims accrued rewards for the specified account.
      * @dev Updates the rewards before claiming them.
-     * @param caller The address of the account claiming the rewards.
+     * @param caller_ The address of the account claiming the rewards.
      */
-    function _claimRewards(address caller) public {
-        _updateRewards(caller);
-        uint256 rewards = _accruedRewards[caller];
+    function _claimRewards(address caller_) public {
+        _updateRewards(caller_);
+        uint256 rewards = _accruedRewards[caller_];
         if (rewards > 0) {
-            _accruedRewards[caller] = 0;
+            _accruedRewards[caller_] = 0;
             unchecked {
                 unclaimedRewards -= rewards;
             }
-            _mint(caller, rewards);
-            emit RewardsClaimed(caller, rewards);
+            _mint(caller_, rewards);
+            emit RewardsClaimed(caller_, rewards);
         }
     }
 
