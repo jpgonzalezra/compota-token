@@ -293,6 +293,20 @@ contract InterestBearingTokenTest is Test {
         assertEq(token.totalSupply(), initialMint + expectedRewards);
     }
 
+    function testClaimRewardsWithNoRewards() public {
+        vm.prank(owner);
+        token.mint(alice, 1000 * 10e6);
+
+        uint256 initialBalance = token.balanceOf(alice);
+
+        vm.prank(alice);
+        token.claimRewards();
+
+        uint256 finalBalance = token.balanceOf(alice);
+
+        assertEq(initialBalance, finalBalance);
+    }
+
     /* ============ Helper functions ============ */
 
     function _mint(address minter, address to, uint256 amount) internal {
