@@ -8,7 +8,7 @@ import { ICompotaToken } from "./intefaces/ICompotaToken.sol";
 
 /**
  * @title CompotaToken
- * @dev ERC20 token that accrues interest over time.
+ * @dev ERC20 interest-bearing token that continuously accrues yield to its holders.
  */
 contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
     /* ============ Variables ============ */

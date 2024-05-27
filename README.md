@@ -2,7 +2,7 @@
 
 ## Overview
 
-CompotaToken is a custom ERC20 interest-bearing token that accrues interest over time. This smart contract is designed to manage an interest-bearing token, allowing users to earn interest on their token holdings.
+CompotaToken is a custom ERC20 interest-bearing token that continuously accrues yield to its holders.
 
 ## Key Features
 
