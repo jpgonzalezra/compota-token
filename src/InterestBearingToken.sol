@@ -25,8 +25,10 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
     /// @notice The maximum yearly rate of interest in basis points (bps).
     uint16 public constant MAX_YEARLY_RATE = 4_000; // This represents a 40% annual percentage yield (APY).
 
-    uint256 internal _totalSupply;
     uint16 public yearlyRate;
+
+    uint256 internal _totalSupply;
+    address[] internal _earners;
 
     mapping(address => uint256) internal _balances;
     mapping(address => uint256) internal _lastUpdateTimestamp;
@@ -95,7 +97,12 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
      * @inheritdoc IERC20
      */
     function totalSupply() external view returns (uint256 totalSupply_) {
-        return _totalSupply;
+        totalSupply_ = _totalSupply;
+        uint256 length = _earners.length;
+        for (uint256 i = 0; i < length; i++) {
+            totalSupply_ += _calculateCurrentRewards(_earners[i]);
+        }
+        return totalSupply_;
     }
 
     /**
@@ -174,6 +181,7 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
         uint256 timestamp = block.timestamp;
         if (_lastUpdateTimestamp[account_] == 0) {
             _lastUpdateTimestamp[account_] = timestamp;
+            _earners.push(account_);
             emit StartedEarningRewards(account_);
             return;
         }

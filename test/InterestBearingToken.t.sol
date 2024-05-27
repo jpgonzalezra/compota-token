@@ -20,7 +20,7 @@ contract InterestBearingTokenTest is Test {
 
     function setUp() external {
         vm.prank(owner);
-        token = new InterestBearingToken(INTEREST_RATE); // 10% APY in BPS
+        token = new InterestBearingToken(INTEREST_RATE);
     }
 
     function testInitialization() external view {
