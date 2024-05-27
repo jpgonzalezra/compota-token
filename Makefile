@@ -6,8 +6,8 @@
 update:; forge update
 
 # Deployment helpers
-deploy-local :; FOUNDRY_PROFILE=production forge script script/Deploy.s.sol --rpc-url localhost --broadcast -v
-deploy-sepolia :; FOUNDRY_PROFILE=production forge script script/Deploy.s.sol --rpc-url sepolia --broadcast -vvv
+deploy-local :; FOUNDRY_PROFILE=production forge script script/CompotaToken.s.sol --rpc-url localhost --broadcast -v
+deploy-sepolia :; FOUNDRY_PROFILE=production forge script script/CompotaToken.s.sol --rpc-url sepolia --broadcast -vvv
 
 # Run slither
 slither :; FOUNDRY_PROFILE=production forge build --build-info --skip '*/test/**' --skip '*/script/**' --force && slither --compile-force-framework foundry --ignore-compile --sarif results.sarif --config-file slither.config.json .
