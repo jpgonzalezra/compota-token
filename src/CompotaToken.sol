@@ -27,11 +27,11 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
 
     uint16 public yearlyRate;
 
-    uint256 public latestUpdateTimestamp;
+    uint40 public latestUpdateTimestamp;
     uint256 internal _totalSupply;
 
     mapping(address => uint256) internal _balances;
-    mapping(address => uint256) internal _lastUpdateTimestamp;
+    mapping(address => uint40) internal _lastUpdateTimestamp;
 
     /* ============ Constructor ============ */
 
@@ -173,7 +173,7 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @param account_ The address of the account for which rewards will be updated.
      */
     function _updateRewards(address account_) internal {
-        uint256 timestamp = block.timestamp;
+        uint40 timestamp = uint40(block.timestamp);
         latestUpdateTimestamp = timestamp;
         if (_lastUpdateTimestamp[account_] == 0) {
             _lastUpdateTimestamp[account_] = timestamp;
