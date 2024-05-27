@@ -1,6 +1,6 @@
 No files changed, compilation skipped
 
-Ran 21 tests for test/InterestBearingToken.t.sol:InterestBearingTokenTest
+Ran 21 tests for test/CompotaToken.t.sol:CompotaTokenTest
 [PASS] testBurningAllTokens() (gas: 141702)
 [PASS] testBurningFailsWithInsufficientAmount() (gas: 131763)
 [PASS] testBurningMoreThanBalance() (gas: 147431)
@@ -23,7 +23,7 @@ Ran 21 tests for test/InterestBearingToken.t.sol:InterestBearingTokenTest
 [PASS] testSetYearlyRate() (gas: 125447)
 [PASS] testTotalSupplyWithUnclaimedRewards() (gas: 197075)
 Suite result: ok. 21 passed; 0 failed; 0 skipped; finished in 9.46ms (9.19ms CPU time)
-| src/InterestBearingToken.sol:InterestBearingToken contract |                 |        |        |        |         |
+| src/CompotaToken.sol:CompotaToken contract |                 |        |        |        |         |
 |------------------------------------------------------------|-----------------|--------|--------|--------|---------|
 | Deployment Cost                                            | Deployment Size |        |        |        |         |
 | 3533250                                                    | 18198           |        |        |        |         |

@@ -1,15 +1,15 @@
-## InterestBearingToken
+## CompotaToken
 
 ## Overview
 
-The InterestBearingToken is a custom ERC20 token that accrues interest over time. This smart contract is designed to manage an interest-bearing token, allowing users to earn interest on their token holdings.
+CompotaToken is a custom ERC20 interest-bearing token that accrues interest over time. This smart contract is designed to manage an interest-bearing token, allowing users to earn interest on their token holdings.
 
 ## Key Features
 
 - Interest Accrual: Tokens accrue interest over time, calculated based on a yearly interest rate set by the contract owner.
 - Minting and Burning: The contract owner can mint new tokens to specified addresses and burn tokens from their own balance.
 - Balance Tracking: User balances are tracked along with the accrued interest, providing an accurate total balance for each user.
-- Interest Rate Control: The contract owner can update the yearly interest rate within specified bounds.
+- Interest Rate Control: The contract owner can update the yearly interest rate at any moment in time.
 
 ## Getting started
 

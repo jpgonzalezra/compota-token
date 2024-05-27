@@ -2,12 +2,12 @@
 pragma solidity 0.8.23;
 
 import { Test, console } from "forge-std/Test.sol";
-import { InterestBearingToken } from "../src/InterestBearingToken.sol";
+import { CompotaToken } from "../src/CompotaToken.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
-import { IInterestBearingToken } from "../src/intefaces/IInterestBearingToken.sol";
+import { ICompotaToken } from "../src/intefaces/ICompotaToken.sol";
 
-contract InterestBearingTokenTest is Test {
-    InterestBearingToken token;
+contract CompotaTokenTest is Test {
+    CompotaToken token;
     address owner = address(1);
     address alice = address(2);
     address bob = address(3);
@@ -20,7 +20,7 @@ contract InterestBearingTokenTest is Test {
 
     function setUp() external {
         vm.prank(owner);
-        token = new InterestBearingToken(INTEREST_RATE);
+        token = new CompotaToken(INTEREST_RATE);
     }
 
     function testInitialization() external view {
@@ -80,7 +80,7 @@ contract InterestBearingTokenTest is Test {
         _mint(owner, alice, INITIAL_SUPPLY);
         uint256 valueToBurn = INITIAL_SUPPLY + BURN_AMOUNT;
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(IInterestBearingToken.InsufficientBalance.selector, valueToBurn));
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InsufficientBalance.selector, valueToBurn));
         token.burn(valueToBurn);
     }
 
@@ -108,7 +108,7 @@ contract InterestBearingTokenTest is Test {
     function testInterestAccrualAfterOneYear() external {
         vm.prank(owner);
         vm.expectEmit();
-        emit IInterestBearingToken.StartedEarningRewards(alice);
+        emit ICompotaToken.StartedEarningRewards(alice);
         token.mint(alice, INITIAL_SUPPLY);
 
         // Trigger interest calculation
@@ -217,26 +217,26 @@ contract InterestBearingTokenTest is Test {
 
         vm.prank(owner);
         // Test with invalid rate below minimum
-        vm.expectRevert(abi.encodeWithSelector(IInterestBearingToken.InvalidYearlyRate.selector, 99));
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 99));
         token.setYearlyRate(99);
 
         vm.prank(owner);
         // Test with invalid rate above maximum
-        vm.expectRevert(abi.encodeWithSelector(IInterestBearingToken.InvalidYearlyRate.selector, 40001));
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 40001));
         token.setYearlyRate(40001);
     }
 
     function testConstructorInitializesYearlyRate() public {
-        InterestBearingToken newToken = new InterestBearingToken(500);
+        CompotaToken newToken = new CompotaToken(500);
         assertEq(newToken.yearlyRate(), 500);
     }
 
     function testConstructorRevertsOnInvalidYearlyRate() public {
-        vm.expectRevert(abi.encodeWithSelector(IInterestBearingToken.InvalidYearlyRate.selector, 0));
-        new InterestBearingToken(0);
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 0));
+        new CompotaToken(0);
 
-        vm.expectRevert(abi.encodeWithSelector(IInterestBearingToken.InvalidYearlyRate.selector, 50000));
-        new InterestBearingToken(50000);
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 50000));
+        new CompotaToken(50000);
     }
 
     function testInterestAccumulationAfterTransfer() external {

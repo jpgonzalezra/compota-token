@@ -4,13 +4,13 @@ pragma solidity 0.8.23;
 import { Owned } from "solmate/auth/Owned.sol";
 import { ERC20Extended } from "@mzero-labs/ERC20Extended.sol";
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
-import { IInterestBearingToken } from "./intefaces/IInterestBearingToken.sol";
+import { ICompotaToken } from "./intefaces/ICompotaToken.sol";
 
 /**
- * @title InterestBearingToken
+ * @title CompotaToken
  * @dev ERC20 token that accrues interest over time.
  */
-contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
+contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
     /* ============ Variables ============ */
 
     /// @notice Scale factor used to convert basis points (bps) into decimal fractions.
