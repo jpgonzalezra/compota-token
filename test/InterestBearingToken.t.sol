@@ -4,6 +4,7 @@ pragma solidity 0.8.23;
 import { Test, console } from "forge-std/Test.sol";
 import { InterestBearingToken } from "../src/InterestBearingToken.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
+import { IInterestBearingToken } from "../src/intefaces/IInterestBearingToken.sol";
 
 contract InterestBearingTokenTest is Test {
     InterestBearingToken token;
@@ -17,10 +18,6 @@ contract InterestBearingTokenTest is Test {
     uint256 constant TRANSFER_AMOUNT = 300 * 10e6;
     uint256 constant INSUFFICIENT_AMOUNT = 0;
     uint16 constant INTEREST_RATE = 1000; // 10% APY in BPS
-
-    error InsufficientBalance(uint256 amount);
-
-    event StartedEarningRewards(address indexed account);
 
     function setUp() external {
         vm.prank(owner);
@@ -84,7 +81,7 @@ contract InterestBearingTokenTest is Test {
         _mint(owner, alice, INITIAL_SUPPLY);
         uint256 valueToBurn = INITIAL_SUPPLY + BURN_AMOUNT;
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(InsufficientBalance.selector, valueToBurn));
+        vm.expectRevert(abi.encodeWithSelector(IInterestBearingToken.InsufficientBalance.selector, valueToBurn));
         token.burn(valueToBurn);
     }
 
@@ -112,7 +109,7 @@ contract InterestBearingTokenTest is Test {
     function testInterestAccrualAfterOneYear() external {
         vm.prank(owner);
         vm.expectEmit();
-        emit StartedEarningRewards(alice);
+        emit IInterestBearingToken.StartedEarningRewards(alice);
         token.mint(alice, INITIAL_SUPPLY);
 
         // Trigger interest calculation
@@ -215,12 +212,12 @@ contract InterestBearingTokenTest is Test {
 
         vm.prank(owner);
         // Test with invalid rate below minimum
-        vm.expectRevert(abi.encodeWithSelector(InterestBearingToken.InvalidYearlyRate.selector, 99));
+        vm.expectRevert(abi.encodeWithSelector(IInterestBearingToken.InvalidYearlyRate.selector, 99));
         token.setYearlyRate(99);
 
         vm.prank(owner);
         // Test with invalid rate above maximum
-        vm.expectRevert(abi.encodeWithSelector(InterestBearingToken.InvalidYearlyRate.selector, 40001));
+        vm.expectRevert(abi.encodeWithSelector(IInterestBearingToken.InvalidYearlyRate.selector, 40001));
         token.setYearlyRate(40001);
     }
 
@@ -230,10 +227,10 @@ contract InterestBearingTokenTest is Test {
     }
 
     function testConstructorRevertsOnInvalidYearlyRate() public {
-        vm.expectRevert(abi.encodeWithSelector(InterestBearingToken.InvalidYearlyRate.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(IInterestBearingToken.InvalidYearlyRate.selector, 0));
         new InterestBearingToken(0);
 
-        vm.expectRevert(abi.encodeWithSelector(InterestBearingToken.InvalidYearlyRate.selector, 50000));
+        vm.expectRevert(abi.encodeWithSelector(IInterestBearingToken.InvalidYearlyRate.selector, 50000));
         new InterestBearingToken(50000);
     }
 

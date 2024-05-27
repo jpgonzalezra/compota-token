@@ -4,46 +4,15 @@ pragma solidity 0.8.23;
 import { Owned } from "solmate/auth/Owned.sol";
 import { ERC20Extended } from "@mzero-labs/ERC20Extended.sol";
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
+import { IInterestBearingToken } from "./intefaces/IInterestBearingToken.sol";
 
 /**
  * @title InterestBearingToken
  * @dev ERC20 token that accrues interest over time.
  */
-contract InterestBearingToken is ERC20Extended, Owned {
-    /* ============ Events ============ */
-
-    /**
-     * @notice Emmited when the account starts earning token
-     * @param  account The account that started earning.
-     */
-    event StartedEarningRewards(address indexed account);
-
-    /**
-     * @notice Emitted when the yearly rate is updated.
-     * @param oldRate The previous yearly rate in basis points (BPS).
-     * @param newRate The new yearly rate in basis points (BPS).
-     */
-    event YearlyRateUpdated(uint16 oldRate, uint16 newRate);
-
-    /**
-     * @notice Emitted when rewards are claimed by an account.
-     * @param account The account that claimed the rewards.
-     * @param rewards The amount of rewards claimed.
-     */
-    event RewardsClaimed(address indexed account, uint256 rewards);
-
-    /* ============ Structs ============ */
-    // nothing for now
-
-    /* ============ Custom Errors ============ */
-
-    /// @notice Error thrown when the yearly rate is invalid.
-    error InvalidYearlyRate(uint16 rate);
-
-    /// @notice Error thrown when the balance is insufficient for a specific operation.
-    error InsufficientBalance(uint256 amount);
-
+contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
     /* ============ Variables ============ */
+
     /// @notice The number of seconds in a year.
     uint32 internal constant SECONDS_PER_YEAR = 31_536_000;
 
@@ -60,9 +29,6 @@ contract InterestBearingToken is ERC20Extended, Owned {
     mapping(address => uint256) internal _balances;
     mapping(address => uint256) internal _lastUpdateTimestamp;
     mapping(address => uint256) internal _accruedRewards;
-
-    /* ============ Modifiers ============ */
-    // nothing for now
 
     /* ============ Constructor ============ */
 
