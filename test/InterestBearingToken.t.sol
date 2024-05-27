@@ -290,7 +290,6 @@ contract InterestBearingTokenTest is Test {
         uint256 expectedRewards = (initialMint * INTEREST_RATE * 180 days) / (10_000 * 365 days);
 
         // Verify total supply includes unclaimed rewards
-        // assertEq(token.unclaimedRewards(), expectedRewards);
         assertEq(token.totalSupply(), initialMint + expectedRewards);
     }
 
