@@ -1,0 +1,49 @@
+No files changed, compilation skipped
+
+Ran 21 tests for test/InterestBearingToken.t.sol:InterestBearingTokenTest
+[PASS] testBurningAllTokens() (gas: 141702)
+[PASS] testBurningFailsWithInsufficientAmount() (gas: 131763)
+[PASS] testBurningMoreThanBalance() (gas: 147431)
+[PASS] testBurningTokensAfterTransfer() (gas: 260216)
+[PASS] testBurningTokensCorrectly() (gas: 215003)
+[PASS] testClaimRewardsWithNoRewards() (gas: 157507)
+[PASS] testConstructorInitializesYearlyRate() (gas: 3574081)
+[PASS] testConstructorRevertsOnInvalidYearlyRate() (gas: 864990)
+[PASS] testInitialization() (gas: 29717)
+[PASS] testInterestAccrualAfterOneYear() (gas: 118987)
+[PASS] testInterestAccrualWithMultipleMints() (gas: 208981)
+[PASS] testInterestAccrualWithRateChange() (gas: 339960)
+[PASS] testInterestAccrualWithoutBalanceChange() (gas: 123638)
+[PASS] testInterestAccumulationAfterTransfer() (gas: 359937)
+[PASS] testMintingByNewOwnerAfterTransfer() (gas: 174002)
+[PASS] testMintingByOwner() (gas: 115850)
+[PASS] testMintingFailsByNonOwner() (gas: 35975)
+[PASS] testMintingInsufficientAmount() (gas: 38547)
+[PASS] testMintingInvalidRecipient() (gas: 36471)
+[PASS] testSetYearlyRate() (gas: 125447)
+[PASS] testTotalSupplyWithUnclaimedRewards() (gas: 197075)
+Suite result: ok. 21 passed; 0 failed; 0 skipped; finished in 9.46ms (9.19ms CPU time)
+| src/InterestBearingToken.sol:InterestBearingToken contract |                 |        |        |        |         |
+|------------------------------------------------------------|-----------------|--------|--------|--------|---------|
+| Deployment Cost                                            | Deployment Size |        |        |        |         |
+| 3533250                                                    | 18198           |        |        |        |         |
+| Function Name                                              | min             | avg    | median | max    | # calls |
+| balanceOf                                                  | 2850            | 4100   | 2850   | 6850   | 16      |
+| burn                                                       | 21917           | 39971  | 42764  | 47510  | 6       |
+| claimRewards                                               | 36458           | 60896  | 73116  | 73116  | 6       |
+| mint                                                       | 24489           | 78084  | 94423  | 94423  | 20      |
+| name                                                       | 3478            | 3478   | 3478   | 3478   | 1       |
+| owner                                                      | 2604            | 2604   | 2604   | 2604   | 1       |
+| setYearlyRate                                              | 24124           | 26979  | 26052  | 30743  | 6       |
+| symbol                                                     | 3535            | 3535   | 3535   | 3535   | 1       |
+| totalSupply                                                | 816             | 1816   | 1816   | 2816   | 2       |
+| transfer                                                   | 90809           | 102580 | 102580 | 114352 | 2       |
+| transferOwnership                                          | 28550           | 28550  | 28550  | 28550  | 1       |
+| unclaimedRewards                                           | 561             | 561    | 561    | 561    | 1       |
+| updateRewards                                              | 79175           | 79175  | 79175  | 79175  | 1       |
+| yearlyRate                                                 | 561             | 1227   | 561    | 2561   | 3       |
+
+
+
+
+Ran 1 test suite in 23.25ms (9.46ms CPU time): 21 tests passed, 0 failed, 0 skipped (21 total tests)
