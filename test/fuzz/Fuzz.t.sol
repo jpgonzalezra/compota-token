@@ -3,10 +3,11 @@ pragma solidity 0.8.23;
 
 import { Test } from "forge-std/Test.sol";
 import { InterestBearingToken } from "../../src/InterestBearingToken.sol";
+import { IInterestBearingToken } from "../../src/intefaces/IInterestBearingToken.sol";
 
 contract FuzzTests is Test {
     InterestBearingToken token;
-    address owner = address(0x1);
+    address owner = address(this);
     address alice = address(0x2);
     address bob = address(0x3);
 
@@ -64,5 +65,53 @@ contract FuzzTests is Test {
 
         assertEq(token.balanceOf(alice), (INITIAL_MINT + expectedInterest) - amount);
         assertEq(token.totalSupply(), (INITIAL_MINT + expectedInterest) - amount);
+    }
+
+    function testFuzzTransfer(address to, uint256 amount) public {
+        vm.assume(to != address(0));
+        vm.assume(to != alice);
+        vm.assume(amount <= INITIAL_MINT);
+
+        vm.prank(owner);
+        token.mint(alice, INITIAL_MINT);
+
+        vm.prank(alice);
+        token.transfer(to, amount);
+
+        assertEq(token.balanceOf(to), amount);
+        assertEq(token.balanceOf(alice), INITIAL_MINT - amount);
+    }
+
+    function testFuzzUpdateRewards(address account) public {
+        vm.assume(account != address(0));
+
+        vm.prank(owner);
+        token.mint(account, INITIAL_MINT);
+
+        vm.warp(block.timestamp + 180 days);
+
+        vm.prank(account);
+        token.claimRewards();
+
+        uint256 expectedRewards = (INITIAL_MINT * INTEREST_RATE * 180 days) / (10_000 * 365 days);
+        assertEq(token.balanceOf(account), INITIAL_MINT + expectedRewards);
+    }
+
+    function testFuzzSetYearlyRate(uint16 newRate) public {
+        vm.prank(owner);
+
+        if (newRate < token.MIN_YEARLY_RATE() || newRate > token.MAX_YEARLY_RATE()) {
+            vm.expectRevert(abi.encodeWithSelector(IInterestBearingToken.InvalidYearlyRate.selector, newRate));
+            token.setYearlyRate(newRate);
+        } else {
+            uint16 oldRate = token.yearlyRate();
+
+            vm.expectEmit(true, true, true, true);
+            emit IInterestBearingToken.YearlyRateUpdated(oldRate, newRate);
+
+            token.setYearlyRate(newRate);
+
+            assertEq(token.yearlyRate(), newRate);
+        }
     }
 }
