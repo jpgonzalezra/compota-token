@@ -27,8 +27,8 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
 
     uint16 public yearlyRate;
 
+    uint256 public latestUpdateTimestamp;
     uint256 internal _totalSupply;
-    address[] internal _earners;
 
     mapping(address => uint256) internal _balances;
     mapping(address => uint256) internal _lastUpdateTimestamp;
@@ -97,12 +97,7 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @inheritdoc IERC20
      */
     function totalSupply() external view returns (uint256 totalSupply_) {
-        totalSupply_ = _totalSupply;
-        uint256 length = _earners.length;
-        for (uint256 i = 0; i < length; i++) {
-            totalSupply_ += _calculateCurrentRewards(_earners[i]);
-        }
-        return totalSupply_;
+        return _totalSupply + _calculateTotalCurrentRewards();
     }
 
     /**
@@ -179,9 +174,9 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      */
     function _updateRewards(address account_) internal {
         uint256 timestamp = block.timestamp;
+        latestUpdateTimestamp = timestamp;
         if (_lastUpdateTimestamp[account_] == 0) {
             _lastUpdateTimestamp[account_] = timestamp;
-            _earners.push(account_);
             emit StartedEarningRewards(account_);
             return;
         }
@@ -200,12 +195,32 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      */
     function _calculateCurrentRewards(address account_) internal view returns (uint256) {
         if (_lastUpdateTimestamp[account_] == 0) return 0;
+        return _calculateRewards(_balances[account_], _lastUpdateTimestamp[account_]);
+    }
+
+    /**
+     * @notice Calculates the total current accrued rewards for the entire supply since the last update.
+     * @return The amount of rewards accrued since the last update.
+     */
+    function _calculateTotalCurrentRewards() internal view returns (uint256) {
+        if (latestUpdateTimestamp == 0) return 0;
+        return _calculateRewards(_totalSupply, latestUpdateTimestamp);
+    }
+
+    /**
+     * @notice Generalized function to calculate rewards based on an amount and a timestamp.
+     * @param amount_ The amount of tokens to calculate rewards for.
+     * @param timestamp_ The timestamp to calculate rewards from.
+     * @return The amount of rewards accrued since the last update.
+     */
+    function _calculateRewards(uint256 amount_, uint256 timestamp_) internal view returns (uint256) {
+        if (timestamp_ == 0) return 0;
         uint256 timeElapsed;
         // Safe to use unchecked here, since `block.timestamp` is always greater than `_lastUpdateTimestamp[account_]`.
         unchecked {
-            timeElapsed = block.timestamp - _lastUpdateTimestamp[account_];
+            timeElapsed = block.timestamp - timestamp_;
         }
-        return (_balances[account_] * timeElapsed * yearlyRate) / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR));
+        return (amount_ * timeElapsed * yearlyRate) / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR));
     }
 
     /**

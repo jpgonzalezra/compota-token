@@ -279,18 +279,22 @@ contract CompotaTokenTest is Test {
     }
 
     function testTotalSupplyWithUnclaimedRewards() external {
-        uint256 initialMint = 1000 * 10e6; // Initial mint amount
+        uint256 aliceInitialMint = 1000 * 10e6;
+        uint256 bobInitialMint = aliceInitialMint * 2;
 
-        _mint(owner, alice, initialMint);
-        assertEq(token.totalSupply(), initialMint);
+        _mint(owner, alice, aliceInitialMint);
+        _mint(owner, bob, bobInitialMint);
+
+        uint256 totalSupply = aliceInitialMint + bobInitialMint;
+        assertEq(token.totalSupply(), totalSupply);
 
         vm.warp(block.timestamp + 180 days);
 
         // Calculate expected rewards for 180 days with the initial rate
-        uint256 expectedRewards = (initialMint * INTEREST_RATE * 180 days) / (10_000 * 365 days);
+        uint256 expectedRewards = (totalSupply * INTEREST_RATE * 180 days) / (10_000 * 365 days);
 
         // Verify total supply includes unclaimed rewards
-        assertEq(token.totalSupply(), initialMint + expectedRewards);
+        assertEq(token.totalSupply(), totalSupply + expectedRewards);
     }
 
     function testClaimRewardsWithNoRewards() public {
