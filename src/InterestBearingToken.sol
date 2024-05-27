@@ -151,6 +151,12 @@ contract InterestBearingToken is ERC20Extended, Owned {
 
     /* ============ Internal Interactive Functions ============ */
 
+    /**
+     * @notice Transfers tokens between accounts
+     * @param sender_ The address of the account from which tokens will be transferred.
+     * @param recipient_ The address of the account to which tokens will be transferred.
+     * @param amount_ The amount of tokens to be transferred.
+     */
     function _transfer(address sender_, address recipient_, uint256 amount_) internal override {
         _revertIfInvalidRecipient(recipient_);
 
@@ -169,6 +175,11 @@ contract InterestBearingToken is ERC20Extended, Owned {
         emit Transfer(sender_, recipient_, amount_);
     }
 
+    /**
+     * @notice Claims accrued rewards for the specified account.
+     * @dev Updates the rewards before claiming them.
+     * @param caller The address of the account claiming the rewards.
+     */
     function _claimRewards(address caller) public {
         _updateRewards(caller);
         uint256 rewards = _accruedRewards[caller];
@@ -182,30 +193,44 @@ contract InterestBearingToken is ERC20Extended, Owned {
         }
     }
 
-    function _mint(address to, uint256 amount) internal virtual {
-        _totalSupply += amount;
+    /**
+     * @notice Mints new tokens and assigns them to the specified account.
+     * @param to_ The address of the account receiving the newly minted tokens.
+     * @param amount_ The amount of tokens to mint.
+     */
+    function _mint(address to_, uint256 amount_) internal virtual {
+        _totalSupply += amount_;
 
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint256 value.
         unchecked {
-            _balances[to] += amount;
+            _balances[to_] += amount_;
         }
 
-        emit Transfer(address(0), to, amount);
+        emit Transfer(address(0), to_, amount_);
     }
 
-    function _burn(address from, uint256 amount) internal virtual {
-        _balances[from] -= amount;
+    /**
+     * @notice Burns tokens from the specified account.
+     * @param from_ The address of the account from which tokens will be burned.
+     * @param amount_ The amount of tokens to burn.
+     */
+    function _burn(address from_, uint256 amount_) internal virtual {
+        _balances[from_] -= amount_;
 
         // Cannot underflow because a user's balance
         // will never be larger than the total supply.
         unchecked {
-            _totalSupply -= amount;
+            _totalSupply -= amount_;
         }
 
-        emit Transfer(from, address(0), amount);
+        emit Transfer(from_, address(0), amount_);
     }
 
+    /**
+     * @notice Updates the accrued rewards for the specified account.
+     * @param account_ The address of the account for which rewards will be updated.
+     */
     function _updateRewards(address account_) internal {
         uint256 timestamp = block.timestamp;
         if (_lastUpdateTimestamp[account_] == 0) {
@@ -220,6 +245,11 @@ contract InterestBearingToken is ERC20Extended, Owned {
         _lastUpdateTimestamp[account_] = block.timestamp;
     }
 
+    /**
+     * @notice Calculates the current accrued rewards for a specific account since the last update.
+     * @param account_ The address of the account for which rewards will be calculated.
+     * @return The amount of rewards accrued since the last update.
+     */
     function _calculateCurrentRewards(address account_) internal view returns (uint256) {
         if (_lastUpdateTimestamp[account_] == 0) return 0;
         uint256 timeElapsed;
@@ -231,7 +261,7 @@ contract InterestBearingToken is ERC20Extended, Owned {
     }
 
     /**
-     * @dev   Reverts if the balance is insufficient.
+     * @dev Reverts if the balance is insufficient.
      * @param caller_ Caller
      * @param amount_ Balance to check.
      */
@@ -241,7 +271,7 @@ contract InterestBearingToken is ERC20Extended, Owned {
     }
 
     /**
-     * @dev   Reverts if the amount of a `mint` or `burn` is equal to 0.
+     * @dev Reverts if the amount of a `mint` or `burn` is equal to 0.
      * @param amount_ Amount to check.
      */
     function _revertIfInsufficientAmount(uint256 amount_) internal pure {
@@ -249,7 +279,7 @@ contract InterestBearingToken is ERC20Extended, Owned {
     }
 
     /**
-     * @dev   Reverts if the recipient of a `mint` or `transfer` is address(0).
+     * @dev Reverts if the recipient of a `mint` or `transfer` is address(0).
      * @param recipient_ Address of the recipient to check.
      */
     function _revertIfInvalidRecipient(address recipient_) internal pure {
