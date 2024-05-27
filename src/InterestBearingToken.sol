@@ -23,12 +23,10 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
     uint16 public constant MAX_YEARLY_RATE = 4000; // This represents a 40% annual percentage yield (APY).
 
     uint256 internal _totalSupply;
-    uint256 public unclaimedRewards;
     uint16 public yearlyRate;
 
     mapping(address => uint256) internal _balances;
     mapping(address => uint256) internal _lastUpdateTimestamp;
-    mapping(address => uint256) internal _accruedRewards;
 
     /* ============ Constructor ============ */
 
@@ -73,7 +71,7 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
     function burn(uint256 amount_) external {
         _revertIfInsufficientAmount(amount_);
         address caller = msg.sender;
-        _claimRewards(caller);
+        _updateRewards(caller);
         _revertIfInsufficientBalance(msg.sender, amount_);
         _burn(caller, amount_);
     }
@@ -85,9 +83,7 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
      * @inheritdoc IERC20
      */
     function balanceOf(address account_) external view override returns (uint256) {
-        unchecked {
-            return _balances[account_] + _accruedRewards[account_] + _calculateCurrentRewards(account_);
-        }
+        return _balances[account_] + _calculateCurrentRewards(account_);
     }
 
     /**
@@ -96,15 +92,7 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
      * @inheritdoc IERC20
      */
     function totalSupply() external view returns (uint256 totalSupply_) {
-        return _totalSupply + unclaimedRewards;
-    }
-
-    /**
-     * @notice Updates the rewards for a specific account.
-     * @param account The address of the account to update rewards for.
-     */
-    function updateRewards(address account) external {
-        _updateRewards(account);
+        return _totalSupply;
     }
 
     /**
@@ -112,7 +100,7 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
      * @dev It can only be called by the owner of the rewards.
      */
     function claimRewards() external {
-        _claimRewards(msg.sender);
+        _updateRewards(msg.sender);
     }
 
     /* ============ Internal Interactive Functions ============ */
@@ -126,9 +114,9 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
     function _transfer(address sender_, address recipient_, uint256 amount_) internal override {
         _revertIfInvalidRecipient(recipient_);
 
-        // Claim rewards for both sender and recipient
-        _claimRewards(sender_);
-        _claimRewards(recipient_);
+        // Update rewards for both sender and recipient
+        _updateRewards(sender_);
+        _updateRewards(recipient_);
 
         _balances[sender_] -= amount_;
 
@@ -139,24 +127,6 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
         }
 
         emit Transfer(sender_, recipient_, amount_);
-    }
-
-    /**
-     * @notice Claims accrued rewards for the specified account.
-     * @dev Updates the rewards before claiming them.
-     * @param caller_ The address of the account claiming the rewards.
-     */
-    function _claimRewards(address caller_) public {
-        _updateRewards(caller_);
-        uint256 rewards = _accruedRewards[caller_];
-        if (rewards > 0) {
-            _accruedRewards[caller_] = 0;
-            unchecked {
-                unclaimedRewards -= rewards;
-            }
-            _mint(caller_, rewards);
-            emit RewardsClaimed(caller_, rewards);
-        }
     }
 
     /**
@@ -206,9 +176,10 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
         }
 
         uint256 rewards = _calculateCurrentRewards(account_);
-        _accruedRewards[account_] += _calculateCurrentRewards(account_);
-        unclaimedRewards += rewards;
-        _lastUpdateTimestamp[account_] = block.timestamp;
+        if (rewards > 0) {
+            _mint(account_, rewards);
+        }
+        _lastUpdateTimestamp[account_] = timestamp;
     }
 
     /**

@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
+pragma solidity 0.8.23;
+
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
 
@@ -17,13 +19,6 @@ interface IInterestBearingToken is IERC20Extended {
      * @param newRate The new yearly rate in basis points (BPS).
      */
     event YearlyRateUpdated(uint16 oldRate, uint16 newRate);
-
-    /**
-     * @notice Emitted when rewards are claimed by an account.
-     * @param account The account that claimed the rewards.
-     * @param rewards The amount of rewards claimed.
-     */
-    event RewardsClaimed(address indexed account, uint256 rewards);
 
     /* ============ Custom Errors ============ */
 
@@ -56,12 +51,6 @@ interface IInterestBearingToken is IERC20Extended {
      * @param amount_ The number of tokens to burn.
      */
     function burn(uint256 amount_) external;
-
-    /**
-     * @notice Updates the rewards for a specific account.
-     * @param account The address of the account to update rewards for.
-     */
-    function updateRewards(address account) external;
 
     /**
      * @notice Claims the accumulated rewards for the sender.
