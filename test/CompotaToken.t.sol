@@ -25,8 +25,8 @@ contract CompotaTokenTest is Test {
 
     function testInitialization() external view {
         assertEq(token.owner(), owner);
-        assertEq(token.name(), "IBToken");
-        assertEq(token.symbol(), "IB");
+        assertEq(token.name(), "Compota Token");
+        assertEq(token.symbol(), "COMPOTA");
         assertEq(token.yearlyRate(), 1e3);
     }
 

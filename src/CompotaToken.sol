@@ -35,7 +35,7 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
 
     /* ============ Constructor ============ */
 
-    constructor(uint16 yearlyRate_) ERC20Extended("IBToken", "IB", 6) Owned(msg.sender) {
+    constructor(uint16 yearlyRate_) ERC20Extended("Compota Token", "COMPOTA", 6) Owned(msg.sender) {
         setYearlyRate(yearlyRate_);
     }
 
