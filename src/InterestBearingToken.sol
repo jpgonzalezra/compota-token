@@ -16,10 +16,10 @@ contract InterestBearingToken is IInterestBearingToken, ERC20Extended, Owned {
     /// @notice The number of seconds in a year.
     uint32 internal constant SECONDS_PER_YEAR = 31_536_000;
 
-    ///@notice The minimum yearly rate of interest in basis points (BPS).
+    /// @notice The minimum yearly rate of interest in basis points (BPS).
     uint16 public constant MIN_YEARLY_RATE = 100; // This represents a 1% annual percentage yield (APY).
 
-    ///@notice The maximum yearly rate of interest in basis points (BPS).
+    /// @notice The maximum yearly rate of interest in basis points (BPS).
     uint16 public constant MAX_YEARLY_RATE = 4000; // This represents a 40% annual percentage yield (APY).
 
     uint256 internal _totalSupply;
