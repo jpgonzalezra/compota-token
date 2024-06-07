@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.23;
 
-import { Test, console } from "forge-std/Test.sol";
+import { Test } from "forge-std/Test.sol";
 import { CompotaToken } from "../src/CompotaToken.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
 import { ICompotaToken } from "../src/intefaces/ICompotaToken.sol";

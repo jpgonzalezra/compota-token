@@ -27,11 +27,17 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
 
     uint16 public yearlyRate;
 
-    uint40 public latestUpdateTimestamp;
-    uint256 internal _totalSupply;
+    uint32 public latestUpdateTimestamp;
+    uint224 internal _totalSupply;
 
-    mapping(address => uint256) internal _balances;
-    mapping(address => uint40) internal _lastUpdateTimestamp;
+    struct Balance {
+        // 1st slot
+        // @dev This timestamp will work until approximately the year 2106
+        uint32 lastUpdateTimestamp;
+        uint224 value;
+    }
+
+    mapping(address => Balance) internal _balances;
 
     /* ============ Constructor ============ */
 
@@ -88,7 +94,7 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @inheritdoc IERC20
      */
     function balanceOf(address account_) external view override returns (uint256) {
-        return _balances[account_] + _calculateCurrentRewards(account_);
+        return _balances[account_].value + _calculateCurrentRewards(account_);
     }
 
     /**
@@ -97,7 +103,7 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @inheritdoc IERC20
      */
     function totalSupply() external view returns (uint256 totalSupply_) {
-        return _totalSupply + _calculateTotalCurrentRewards();
+        return uint256(_totalSupply + _calculateTotalCurrentRewards());
     }
 
     /**
@@ -123,12 +129,12 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
         _updateRewards(sender_);
         _updateRewards(recipient_);
 
-        _balances[sender_] -= amount_;
+        _balances[sender_].value -= safe224(amount_);
 
         // Cannot overflow because the sum of all user
-        // balances can't exceed the max uint256 value.
+        // balances can't exceed the max uint224 value.
         unchecked {
-            _balances[recipient_] += amount_;
+            _balances[recipient_].value += safe224(amount_);
         }
 
         emit Transfer(sender_, recipient_, amount_);
@@ -140,12 +146,12 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @param amount_ The amount of tokens to mint.
      */
     function _mint(address to_, uint256 amount_) internal virtual {
-        _totalSupply += amount_;
+        _totalSupply += safe224(amount_);
 
         // Cannot overflow because the sum of all user
-        // balances can't exceed the max uint256 value.
+        // balances can't exceed the max uint224 value.
         unchecked {
-            _balances[to_] += amount_;
+            _balances[to_].value += safe224(amount_);
         }
 
         emit Transfer(address(0), to_, amount_);
@@ -157,12 +163,12 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @param amount_ The amount of tokens to burn.
      */
     function _burn(address from_, uint256 amount_) internal virtual {
-        _balances[from_] -= amount_;
+        _balances[from_].value -= safe224(amount_);
 
         // Cannot underflow because a user's balance
         // will never be larger than the total supply.
         unchecked {
-            _totalSupply -= amount_;
+            _totalSupply -= safe224(amount_);
         }
 
         emit Transfer(from_, address(0), amount_);
@@ -173,10 +179,11 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @param account_ The address of the account for which rewards will be updated.
      */
     function _updateRewards(address account_) internal {
-        uint40 timestamp = uint40(block.timestamp);
+        uint32 timestamp = uint32(block.timestamp);
         latestUpdateTimestamp = timestamp;
-        if (_lastUpdateTimestamp[account_] == 0) {
-            _lastUpdateTimestamp[account_] = timestamp;
+
+        if (_balances[account_].lastUpdateTimestamp == 0) {
+            _balances[account_].lastUpdateTimestamp = timestamp;
             emit StartedEarningRewards(account_);
             return;
         }
@@ -185,7 +192,7 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
         if (rewards > 0) {
             _mint(account_, rewards);
         }
-        _lastUpdateTimestamp[account_] = timestamp;
+        _balances[account_].lastUpdateTimestamp = timestamp;
     }
 
     /**
@@ -194,15 +201,16 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @return The amount of rewards accrued since the last update.
      */
     function _calculateCurrentRewards(address account_) internal view returns (uint256) {
-        if (_lastUpdateTimestamp[account_] == 0) return 0;
-        return _calculateRewards(_balances[account_], _lastUpdateTimestamp[account_]);
+        uint32 lastUpdateTimestamp = _balances[account_].lastUpdateTimestamp;
+        if (lastUpdateTimestamp == 0) return 0;
+        return _calculateRewards(_balances[account_].value, lastUpdateTimestamp);
     }
 
     /**
      * @notice Calculates the total current accrued rewards for the entire supply since the last update.
      * @return The amount of rewards accrued since the last update.
      */
-    function _calculateTotalCurrentRewards() internal view returns (uint256) {
+    function _calculateTotalCurrentRewards() internal view returns (uint224) {
         if (latestUpdateTimestamp == 0) return 0;
         return _calculateRewards(_totalSupply, latestUpdateTimestamp);
     }
@@ -213,14 +221,14 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @param timestamp_ The timestamp to calculate rewards from.
      * @return The amount of rewards accrued since the last update.
      */
-    function _calculateRewards(uint256 amount_, uint256 timestamp_) internal view returns (uint256) {
+    function _calculateRewards(uint224 amount_, uint256 timestamp_) internal view returns (uint224) {
         if (timestamp_ == 0) return 0;
         uint256 timeElapsed;
         // Safe to use unchecked here, since `block.timestamp` is always greater than `_lastUpdateTimestamp[account_]`.
         unchecked {
             timeElapsed = block.timestamp - timestamp_;
         }
-        return (amount_ * timeElapsed * yearlyRate) / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR));
+        return safe224((amount_ * timeElapsed * yearlyRate) / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR)));
     }
 
     /**
@@ -229,7 +237,7 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @param amount_ Balance to check.
      */
     function _revertIfInsufficientBalance(address caller_, uint256 amount_) internal view {
-        uint256 balance = _balances[caller_];
+        uint224 balance = _balances[caller_].value;
         if (balance < amount_) revert InsufficientBalance(amount_);
     }
 
@@ -247,5 +255,17 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      */
     function _revertIfInvalidRecipient(address recipient_) internal pure {
         if (recipient_ == address(0)) revert InvalidRecipient(recipient_);
+    }
+
+    /**
+     * @notice Casts a given uint256 value to a uint224,
+     *         ensuring that it is less than or equal to the maximum uint224 value.
+     * @param  n The value to check.
+     * @return The value casted to uint224.
+     * @dev Based on https://github.com/MZero-Labs/common/blob/main/src/libs/UIntMath.sol
+     */
+    function safe224(uint256 n) internal pure returns (uint224) {
+        if (n > type(uint224).max) revert InvalidUInt224();
+        return uint224(n);
     }
 }

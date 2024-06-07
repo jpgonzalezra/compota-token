@@ -28,6 +28,9 @@ interface ICompotaToken is IERC20Extended {
     /// @notice Error thrown when the balance is insufficient for a specific operation.
     error InsufficientBalance(uint256 amount);
 
+    /// @notice Emitted when a passed value is greater than the maximum value of uint224.
+    error InvalidUInt224();
+
     /* ============ Interactive Functions ============ */
 
     /**
