@@ -20,16 +20,29 @@ interface ICompotaToken is IERC20Extended {
      */
     event YearlyRateUpdated(uint16 oldRate, uint16 newRate);
 
+    /**
+     * @notice Emitted when the cooldown period is updated.
+     * @param oldCooldownPeriod The cooldown period before the update, in seconds.
+     * @param newCooldownPeriod The cooldown period after the update, in seconds.
+     */
+    event CooldownPeriodUpdated(uint32 oldCooldownPeriod, uint32 newCooldownPeriod);
+
     /* ============ Custom Errors ============ */
 
     /// @notice Error thrown when the yearly rate is invalid.
     error InvalidYearlyRate(uint16 rate);
+
+    /// @notice Error thrown when the cooldown is invalid.
+    error InvalidCooldownPeriod(uint32 cooldownPeriod);
 
     /// @notice Error thrown when the balance is insufficient for a specific operation.
     error InsufficientBalance(uint256 amount);
 
     /// @notice Emitted when a passed value is greater than the maximum value of uint224.
     error InvalidUInt224();
+
+    /// @notice Emitted when a user attempts to claim rewards before the cooldown period has elapsed.
+    error CooldownNotCompleted(uint32 remainingCooldown);
 
     /* ============ Interactive Functions ============ */
 

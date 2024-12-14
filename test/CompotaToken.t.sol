@@ -21,7 +21,7 @@ contract CompotaTokenTest is Test {
 
     function setUp() external {
         vm.prank(owner);
-        token = new CompotaToken(INTEREST_RATE);
+        token = new CompotaToken(INTEREST_RATE, 1 days);
     }
 
     function testInitialization() external view {
@@ -29,6 +29,7 @@ contract CompotaTokenTest is Test {
         assertEq(token.name(), "Compota Token");
         assertEq(token.symbol(), "COMPOTA");
         assertEq(token.yearlyRate(), 1e3);
+        assertEq(token.cooldownPeriod(), 1 days);
     }
 
     function testMintingByOwner() external {
@@ -216,16 +217,16 @@ contract CompotaTokenTest is Test {
     }
 
     function testConstructorInitializesYearlyRate() public {
-        CompotaToken newToken = new CompotaToken(500);
+        CompotaToken newToken = new CompotaToken(500, 1 days);
         assertEq(newToken.yearlyRate(), 500);
     }
 
     function testConstructorRevertsOnInvalidYearlyRate() public {
         vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 0));
-        new CompotaToken(0);
+        new CompotaToken(0, 1 days);
 
         vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 50000));
-        new CompotaToken(50000);
+        new CompotaToken(50000, 1 days);
     }
 
     function testInterestAccumulationAfterTransfer() external {
@@ -278,18 +279,104 @@ contract CompotaTokenTest is Test {
         assertEq(token.totalSupply(), totalSupply + expectedRewards);
     }
 
-    function testClaimRewardsWithNoRewards() public {
+    function testClaimRewardsCooldownNotCompleted() public {
         vm.prank(owner);
         token.mint(alice, 1000 * 10e6);
 
-        uint256 initialBalance = token.balanceOf(alice);
+        vm.prank(alice);
+
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.CooldownNotCompleted.selector, 1 days));
+        token.claimRewards();
+    }
+
+    function testClaimRewardsWithCooldownPeriod() public {
+        _mint(owner, alice, INITIAL_SUPPLY);
+
+        vm.warp(block.timestamp + 10 days);
 
         vm.prank(alice);
         token.claimRewards();
 
-        uint256 finalBalance = token.balanceOf(alice);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.CooldownNotCompleted.selector, 1 days));
+        token.claimRewards();
 
-        assertEq(initialBalance, finalBalance);
+        vm.warp(block.timestamp + 1 days);
+
+        vm.prank(alice);
+        token.claimRewards();
+    }
+
+    function testDynamicCooldownPeriodChange() public {
+        _mint(owner, alice, INITIAL_SUPPLY);
+
+        vm.prank(owner);
+        token.setCooldownPeriod(12 hours);
+        assertEq(token.cooldownPeriod(), 12 hours);
+
+        vm.warp(block.timestamp + 15 days);
+
+        vm.prank(alice);
+        token.claimRewards();
+
+        vm.warp(block.timestamp + 13 hours);
+
+        vm.prank(alice);
+        token.claimRewards();
+    }
+
+    function testClaimFailsAfterCooldownIncrease() public {
+        _mint(owner, alice, INITIAL_SUPPLY);
+
+        vm.warp(block.timestamp + 10 days);
+
+        vm.prank(alice);
+        token.claimRewards();
+
+        vm.prank(owner);
+        token.setCooldownPeriod(3 days);
+        assertEq(token.cooldownPeriod(), 3 days);
+
+        vm.warp(block.timestamp + 2 days);
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.CooldownNotCompleted.selector, 1 days));
+        token.claimRewards();
+    }
+
+    function testCooldownDoesNotAffectMintingOrBurning() public {
+        _mint(owner, alice, INITIAL_SUPPLY);
+
+        _mint(owner, alice, 500 * 10e6);
+        assertEq(token.balanceOf(alice), INITIAL_SUPPLY + (500 * 10e6));
+
+        _burn(alice, 200 * 10e6);
+        assertEq(token.balanceOf(alice), (INITIAL_SUPPLY + (500 * 10e6)) - (200 * 10e6));
+    }
+
+    function testCooldownDoesNotAffectTransfer() public {
+        _mint(owner, alice, INITIAL_SUPPLY);
+
+        uint256 aliceBalanceRaw = INITIAL_SUPPLY;
+        vm.warp(block.timestamp + 10 days);
+
+        uint256 interest = (aliceBalanceRaw * INTEREST_RATE * 10 days) / (SCALE_FACTOR * 365 days);
+
+        _transfer(alice, bob, 200 * 10e6);
+        assertEq(token.balanceOf(alice), INITIAL_SUPPLY + interest - 200 * 10e6);
+        assertEq(token.balanceOf(bob), 200 * 10e6);
+    }
+
+    function testSetCooldownPeriodByNonOwnerFails() public {
+        vm.prank(alice);
+        vm.expectRevert("UNAUTHORIZED");
+        token.setCooldownPeriod(12 hours);
+    }
+
+    function testSetCooldownPeriodToZero() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidCooldownPeriod.selector, 0));
+        token.setCooldownPeriod(0);
     }
 
     /* ============ Helper functions ============ */

@@ -29,6 +29,7 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
 
     uint32 public latestUpdateTimestamp;
     uint224 internal _totalSupply;
+    uint32 public cooldownPeriod;
 
     struct Balance {
         // 1st slot
@@ -38,11 +39,16 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
     }
 
     mapping(address => Balance) internal _balances;
+    mapping(address => uint32) internal _latestClaimTimestamp;
 
     /* ============ Constructor ============ */
 
-    constructor(uint16 yearlyRate_) ERC20Extended("Compota Token", "COMPOTA", 6) Owned(msg.sender) {
+    constructor(
+        uint16 yearlyRate_,
+        uint32 cooldownPeriod_
+    ) ERC20Extended("Compota Token", "COMPOTA", 6) Owned(msg.sender) {
         setYearlyRate(yearlyRate_);
+        setCooldownPeriod(cooldownPeriod_);
     }
 
     /* ============ Interactive Functions ============ */
@@ -60,6 +66,20 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
         uint16 oldYearlyRate = yearlyRate;
         yearlyRate = newRate_;
         emit YearlyRateUpdated(oldYearlyRate, newRate_);
+    }
+
+    /**
+     * @notice Updates the cooldown period required between reward claims.
+     * @dev Only the owner can call this function.
+     * @param newCooldownPeriod_ The new coolddown period.
+     */
+    function setCooldownPeriod(uint32 newCooldownPeriod_) public onlyOwner {
+        if (newCooldownPeriod_ == 0) {
+            revert InvalidCooldownPeriod(newCooldownPeriod_);
+        }
+        uint32 oldCooldownPeriod_ = cooldownPeriod;
+        cooldownPeriod = newCooldownPeriod_;
+        emit CooldownPeriodUpdated(oldCooldownPeriod_, newCooldownPeriod_);
     }
 
     /**
@@ -111,7 +131,17 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @dev It can only be called by the owner of the rewards.
      */
     function claimRewards() external {
-        _updateRewards(msg.sender);
+        address caller = msg.sender;
+        uint32 currentTimestamp = uint32(block.timestamp);
+        uint32 latestClaim = _latestClaimTimestamp[caller];
+
+        if (currentTimestamp - latestClaim < cooldownPeriod) {
+            revert CooldownNotCompleted(latestClaim + cooldownPeriod - currentTimestamp);
+        }
+
+        _latestClaimTimestamp[caller] = currentTimestamp;
+
+        _updateRewards(caller);
     }
 
     /* ============ Internal Interactive Functions ============ */
@@ -184,6 +214,7 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
 
         if (_balances[account_].lastUpdateTimestamp == 0) {
             _balances[account_].lastUpdateTimestamp = timestamp;
+            _latestClaimTimestamp[account_] = timestamp;
             emit StartedEarningRewards(account_);
             return;
         }

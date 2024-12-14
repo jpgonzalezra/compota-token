@@ -16,7 +16,7 @@ contract FuzzTests is Test {
 
     function setUp() public {
         vm.startPrank(owner);
-        token = new CompotaToken(INTEREST_RATE);
+        token = new CompotaToken(INTEREST_RATE, 1 days);
         vm.stopPrank();
     }
 
