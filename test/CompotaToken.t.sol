@@ -11,6 +11,8 @@ contract CompotaTokenTest is Test {
     address owner = address(1);
     address alice = address(2);
     address bob = address(3);
+    address minterEOA = address(4);
+    address minterContract;
 
     uint256 constant SCALE_FACTOR = 10_000;
     uint256 constant INITIAL_SUPPLY = 1000 * 10e6;
@@ -22,6 +24,7 @@ contract CompotaTokenTest is Test {
     function setUp() external {
         vm.prank(owner);
         token = new CompotaToken(INTEREST_RATE, 1 days);
+        minterContract = address(new MinterContract(address(token)));
     }
 
     function testInitialization() external view {
@@ -40,7 +43,7 @@ contract CompotaTokenTest is Test {
     function testMintingFailsByNonOwner() external {
         // Alice tries to mint tokens
         vm.prank(alice);
-        vm.expectRevert("UNAUTHORIZED");
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.Unauthorized.selector));
         token.mint(alice, INITIAL_SUPPLY);
     }
 
@@ -50,7 +53,7 @@ contract CompotaTokenTest is Test {
         token.transferOwnership(alice);
 
         // owner should not be able to mint tokens anymore
-        vm.expectRevert("UNAUTHORIZED");
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.Unauthorized.selector));
         token.mint(bob, INITIAL_SUPPLY);
 
         // alice should be able to mint tokens now
@@ -379,6 +382,53 @@ contract CompotaTokenTest is Test {
         token.setCooldownPeriod(0);
     }
 
+    function testMinterCanMintTokens() public {
+        vm.prank(owner);
+        token.transferMinter(minterEOA);
+
+        vm.prank(minterEOA);
+        token.mint(alice, INITIAL_SUPPLY);
+
+        assertEq(token.balanceOf(alice), INITIAL_SUPPLY);
+    }
+
+    function testNonMinterCannotMintTokens() public {
+        vm.prank(owner);
+        token.transferMinter(minterEOA);
+
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.Unauthorized.selector));
+        token.mint(alice, INITIAL_SUPPLY);
+    }
+
+    function testOnlyOwnerCanChangeMinter() public {
+        vm.prank(bob);
+        vm.expectRevert("UNAUTHORIZED");
+        token.transferMinter(minterEOA);
+
+        vm.prank(owner);
+        token.transferMinter(minterEOA);
+
+        assertEq(token.minter(), minterEOA);
+    }
+
+    function testMinterContractCanMintTokens() public {
+        vm.prank(owner);
+        token.transferMinter(minterContract);
+
+        vm.prank(minterContract);
+        MinterContract(minterContract).mintTokens(alice, INITIAL_SUPPLY);
+
+        assertEq(token.balanceOf(alice), INITIAL_SUPPLY);
+    }
+
+    function testMinterTransferEmitsEvent() public {
+        vm.prank(owner);
+        vm.expectEmit(true, true, true, true);
+        emit ICompotaToken.MinterTransferred(address(0), minterEOA);
+        token.transferMinter(minterEOA);
+    }
+
     /* ============ Helper functions ============ */
 
     function _mint(address minter, address to, uint256 amount) internal {
@@ -394,5 +444,20 @@ contract CompotaTokenTest is Test {
     function _transfer(address from, address to, uint256 amount) internal {
         vm.prank(from);
         token.transfer(to, amount);
+    }
+}
+
+/**
+ * @dev Helper contract to simulate a minter contract.
+ */
+contract MinterContract {
+    CompotaToken public token;
+
+    constructor(address tokenAddress) {
+        token = CompotaToken(tokenAddress);
+    }
+
+    function mintTokens(address to, uint256 amount) external {
+        token.mint(to, amount);
     }
 }

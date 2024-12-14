@@ -27,6 +27,12 @@ interface ICompotaToken is IERC20Extended {
      */
     event CooldownPeriodUpdated(uint32 oldCooldownPeriod, uint32 newCooldownPeriod);
 
+    /**
+     * @notice Emitted when the minter role is transferred to a new address.
+     * @param oldMinter The address of the previous minter.
+     * @param newMinter The address of the new minter.
+     */
+    event MinterTransferred(address indexed oldMinter, address indexed newMinter);
     /* ============ Custom Errors ============ */
 
     /// @notice Error thrown when the yearly rate is invalid.
@@ -43,6 +49,9 @@ interface ICompotaToken is IERC20Extended {
 
     /// @notice Emitted when a user attempts to claim rewards before the cooldown period has elapsed.
     error CooldownNotCompleted(uint32 remainingCooldown);
+
+    /// @notice Emitted when a function is called by an address that is not authorized to perform the action.
+    error Unauthorized();
 
     /* ============ Interactive Functions ============ */
 

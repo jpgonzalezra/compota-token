@@ -28,8 +28,12 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
     uint16 public yearlyRate;
 
     uint32 public latestUpdateTimestamp;
+
     uint224 internal _totalSupply;
+
     uint32 public cooldownPeriod;
+
+    address public minter;
 
     struct Balance {
         // 1st slot
@@ -83,12 +87,25 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
     }
 
     /**
+     * @notice Transfers the minter role to a new address.
+     * @dev Only the owner of the contract can call this function.
+     * @param newMinter_ The address of the new minter.
+     */
+    function transferMinter(address newMinter_) public onlyOwner {
+        address oldMinter = minter;
+        minter = newMinter_;
+        emit MinterTransferred(oldMinter, newMinter_);
+    }
+
+    /**
      * @notice Mints new tokens to a specified address.
      * @dev Only the owner can call this function.
      * @param to_ The address where the new tokens will be sent.
      * @param amount_ The number of tokens to mint.
      */
-    function mint(address to_, uint256 amount_) external onlyOwner {
+    function mint(address to_, uint256 amount_) external {
+        address sender = msg.sender;
+        if (sender != owner && sender != minter) revert Unauthorized();
         _revertIfInvalidRecipient(to_);
         _revertIfInsufficientAmount(amount_);
         _updateRewards(to_);
