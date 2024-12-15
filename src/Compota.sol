@@ -4,13 +4,13 @@ pragma solidity 0.8.23;
 import { Owned } from "solmate/auth/Owned.sol";
 import { ERC20Extended } from "@mzero-labs/ERC20Extended.sol";
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
-import { ICompotaToken } from "./intefaces/ICompotaToken.sol";
+import { ICompota } from "./intefaces/ICompota.sol";
 
 /**
- * @title CompotaToken
+ * @title Compota
  * @dev ERC20 interest-bearing token that continuously accrues yield to its holders.
  */
-contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
+contract Compota is ICompota, ERC20Extended, Owned {
     /* ============ Variables ============ */
 
     /// @notice Scale factor used to convert basis points (bps) into decimal fractions.
@@ -35,7 +35,24 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
 
     uint32 public cooldownPeriod;
 
+    Pool[] public pools;
+
+    // stakes[poolId][user]
+    mapping(uint256 => mapping(address => StakeInfo)) public stakes;
+
     address public minter;
+
+    struct Pool {
+        address lpToken;
+        uint32 multiplierMax;
+        uint32 timeThreshold;
+    }
+
+    struct StakeInfo {
+        uint224 lpBalanceStaked;
+        uint32 lpStakeStartTimestamp;
+    }
+
     struct Balance {
         // 1st slot
         // @dev This timestamp will work until approximately the year 2106
@@ -89,6 +106,13 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
         emit CooldownPeriodUpdated(oldCooldownPeriod_, newCooldownPeriod_);
     }
 
+    // TODO: DOC
+    function addPool(address lpToken_, uint32 multiplierMax_, uint32 timeThreshold_) external onlyOwner {
+        require(multiplierMax_ >= 1e6, "Mmax < 1");
+        require(timeThreshold_ > 0, "timeThreshold = 0");
+        pools.push(Pool({ lpToken: lpToken_, multiplierMax: multiplierMax_, timeThreshold: timeThreshold_ }));
+    }
+
     /**
      * @notice Transfers the minter role to a new address.
      * @dev Only the owner of the contract can call this function.
@@ -98,6 +122,42 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
         address oldMinter = minter;
         minter = newMinter_;
         emit MinterTransferred(oldMinter, newMinter_);
+    }
+
+    function stakeLP(uint256 poolId_, uint256 amount_) external {
+        require(poolId_ < pools.length, "Invalid poolId");
+        require(amount_ > 0, "amount=0");
+        address caller = msg.sender;
+
+        _updateRewards(caller);
+
+        IERC20(pools[poolId_].lpToken).transferFrom(caller, address(this), amount_);
+
+        StakeInfo storage stakeInfo = stakes[poolId_][caller];
+        if (stakeInfo.lpBalanceStaked == 0) {
+            stakeInfo.lpStakeStartTimestamp = uint32(block.timestamp);
+        }
+        stakeInfo.lpBalanceStaked += safe224(amount_);
+    }
+
+    function unstakeLP(uint256 poolId, uint256 amount_) external {
+        require(poolId < pools.length, "Invalid poolId");
+        require(amount_ > 0, "amount=0");
+
+        address caller = msg.sender;
+        _updateRewards(caller);
+
+        StakeInfo storage stakeInfo = stakes[poolId][caller];
+        uint224 staked = stakeInfo.lpBalanceStaked;
+        require(staked >= amount_, "Not enough staked");
+
+        stakeInfo.lpBalanceStaked = staked - safe224(amount_);
+
+        if (stakeInfo.lpBalanceStaked == 0) {
+            stakeInfo.lpStakeStartTimestamp = 0;
+        }
+
+        IERC20(pools[poolId].lpToken).transfer(caller, amount_);
     }
 
     /**

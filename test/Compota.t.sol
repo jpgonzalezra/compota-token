@@ -2,17 +2,20 @@
 pragma solidity 0.8.23;
 
 import { Test } from "forge-std/Test.sol";
-import { CompotaToken } from "../src/CompotaToken.sol";
+import { Compota } from "../src/Compota.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
-import { ICompotaToken } from "../src/intefaces/ICompotaToken.sol";
+import { ICompota } from "../src/intefaces/ICompota.sol";
+import { ERC20 } from "solmate/tokens/ERC20.sol";
 
-contract CompotaTokenTest is Test {
-    CompotaToken token;
+contract CompotaTest is Test {
+    Compota token;
     address owner = address(1);
     address alice = address(2);
     address bob = address(3);
     address minterEOA = address(4);
     address minterContract;
+    MockLPToken lpToken1;
+    MockLPToken lpToken2;
 
     uint256 constant SCALE_FACTOR = 10_000;
     uint256 constant INITIAL_SUPPLY = 1000 * 10e6;
@@ -23,7 +26,9 @@ contract CompotaTokenTest is Test {
 
     function setUp() external {
         vm.prank(owner);
-        token = new CompotaToken(INTEREST_RATE, 1 days, 1_000_000_000e6);
+        token = new Compota(INTEREST_RATE, 1 days, 1_000_000_000e6);
+        lpToken1 = new MockLPToken();
+        lpToken2 = new MockLPToken();
         minterContract = address(new MinterContract(address(token)));
     }
 
@@ -43,7 +48,7 @@ contract CompotaTokenTest is Test {
     function testMintingFailsByNonOwner() external {
         // Alice tries to mint tokens
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.Unauthorized.selector));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.Unauthorized.selector));
         token.mint(alice, INITIAL_SUPPLY);
     }
 
@@ -53,7 +58,7 @@ contract CompotaTokenTest is Test {
         token.transferOwnership(alice);
 
         // owner should not be able to mint tokens anymore
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.Unauthorized.selector));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.Unauthorized.selector));
         token.mint(bob, INITIAL_SUPPLY);
 
         // alice should be able to mint tokens now
@@ -85,7 +90,7 @@ contract CompotaTokenTest is Test {
         _mint(owner, alice, INITIAL_SUPPLY);
         uint256 valueToBurn = INITIAL_SUPPLY + BURN_AMOUNT;
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InsufficientBalance.selector, valueToBurn));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.InsufficientBalance.selector, valueToBurn));
         token.burn(valueToBurn);
     }
 
@@ -113,7 +118,7 @@ contract CompotaTokenTest is Test {
     function testInterestAccrualAfterOneYear() external {
         vm.prank(owner);
         vm.expectEmit();
-        emit ICompotaToken.StartedEarningRewards(alice);
+        emit ICompota.StartedEarningRewards(alice);
         token.mint(alice, INITIAL_SUPPLY);
 
         vm.warp(block.timestamp + 365 days);
@@ -210,26 +215,26 @@ contract CompotaTokenTest is Test {
 
         vm.prank(owner);
         // Test with invalid rate below minimum
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 99));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidYearlyRate.selector, 99));
         token.setYearlyRate(99);
 
         vm.prank(owner);
         // Test with invalid rate above maximum
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 40001));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidYearlyRate.selector, 40001));
         token.setYearlyRate(40001);
     }
 
     function testConstructorInitializesYearlyRate() public {
-        CompotaToken newToken = new CompotaToken(500, 1 days, 1_000_000_000e6);
+        Compota newToken = new Compota(500, 1 days, 1_000_000_000e6);
         assertEq(newToken.yearlyRate(), 500);
     }
 
     function testConstructorRevertsOnInvalidYearlyRate() public {
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 0));
-        new CompotaToken(0, 1 days, 1_000_000_000e6);
+        vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidYearlyRate.selector, 0));
+        new Compota(0, 1 days, 1_000_000_000e6);
 
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 50000));
-        new CompotaToken(50000, 1 days, 1_000_000_000e6);
+        vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidYearlyRate.selector, 50000));
+        new Compota(50000, 1 days, 1_000_000_000e6);
     }
 
     function testInterestAccumulationAfterTransfer() external {
@@ -288,7 +293,7 @@ contract CompotaTokenTest is Test {
 
         vm.prank(alice);
 
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.CooldownNotCompleted.selector, 1 days));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.CooldownNotCompleted.selector, 1 days));
         token.claimRewards();
     }
 
@@ -301,7 +306,7 @@ contract CompotaTokenTest is Test {
         token.claimRewards();
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.CooldownNotCompleted.selector, 1 days));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.CooldownNotCompleted.selector, 1 days));
         token.claimRewards();
 
         vm.warp(block.timestamp + 1 days);
@@ -343,7 +348,7 @@ contract CompotaTokenTest is Test {
         vm.warp(block.timestamp + 2 days);
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.CooldownNotCompleted.selector, 1 days));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.CooldownNotCompleted.selector, 1 days));
         token.claimRewards();
     }
 
@@ -378,7 +383,7 @@ contract CompotaTokenTest is Test {
 
     function testSetCooldownPeriodToZero() public {
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidCooldownPeriod.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidCooldownPeriod.selector, 0));
         token.setCooldownPeriod(0);
     }
 
@@ -397,7 +402,7 @@ contract CompotaTokenTest is Test {
         token.transferMinter(minterEOA);
 
         vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(ICompotaToken.Unauthorized.selector));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.Unauthorized.selector));
         token.mint(alice, INITIAL_SUPPLY);
     }
 
@@ -425,14 +430,14 @@ contract CompotaTokenTest is Test {
     function testMinterTransferEmitsEvent() public {
         vm.prank(owner);
         vm.expectEmit(true, true, true, true);
-        emit ICompotaToken.MinterTransferred(address(0), minterEOA);
+        emit ICompota.MinterTransferred(address(0), minterEOA);
         token.transferMinter(minterEOA);
     }
 
     function testMintCannotExceedMaxTotalSupply() public {
         uint224 maxSupply = 1_000_000 * 10e6;
         vm.prank(owner);
-        token = new CompotaToken(INTEREST_RATE, 1 days, maxSupply);
+        token = new Compota(INTEREST_RATE, 1 days, maxSupply);
 
         uint256 mintable = 900_000 * 10e6;
         _mint(owner, alice, mintable);
@@ -450,7 +455,7 @@ contract CompotaTokenTest is Test {
     function testMintPartialWhenNearMaxTotalSupply() public {
         uint224 maxSupply = 1_000_000 * 10e6;
         vm.prank(owner);
-        token = new CompotaToken(INTEREST_RATE, 1 days, maxSupply);
+        token = new Compota(INTEREST_RATE, 1 days, maxSupply);
 
         uint256 mintable = 999_999 * 10e6;
         _mint(owner, alice, mintable);
@@ -467,7 +472,7 @@ contract CompotaTokenTest is Test {
     function testInterestAccrualRespectsMaxTotalSupply() external {
         uint224 maxSupply = 600 * 10e6;
         vm.prank(owner);
-        token = new CompotaToken(INTEREST_RATE, 1 days, maxSupply);
+        token = new Compota(INTEREST_RATE, 1 days, maxSupply);
 
         uint256 initialMint = 300 * 10e6;
         _mint(owner, alice, initialMint);
@@ -499,7 +504,159 @@ contract CompotaTokenTest is Test {
         assertEq(token.balanceOf(alice), maxSupply, "Alice's balance should match maxTotalSupply");
     }
 
+    function testOwnerCanAddMultiplePools() external {
+        vm.startPrank(owner);
+        token.addPool(address(lpToken1), 2e6, 365 days);
+        token.addPool(address(lpToken2), 3e6, 180 days);
+        vm.stopPrank();
+
+        (address poolLp1, uint256 multiplierMax1, uint256 timeThreshold1) = getPoolData(0);
+        assertEq(poolLp1, address(lpToken1));
+        assertEq(multiplierMax1, 2e6);
+        assertEq(timeThreshold1, 365 days);
+
+        (address poolLp2, uint256 multiplierMax2, uint256 timeThreshold2) = getPoolData(1);
+        assertEq(poolLp2, address(lpToken2));
+        assertEq(multiplierMax2, 3e6);
+        assertEq(timeThreshold2, 180 days);
+    }
+
+    function testStakeInSinglePool() external {
+        vm.startPrank(owner);
+        token.addPool(address(lpToken1), 2e6, 365 days);
+        vm.stopPrank();
+
+        lpToken1.mint(alice, 1000e6);
+
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), 500e6);
+        token.stakeLP(0, 500e6);
+        vm.stopPrank();
+
+        (uint256 staked, uint32 startTs) = token.stakes(0, alice);
+        assertEq(staked, 500e6, "Staked amount should be recorded");
+        assertTrue(startTs > 0, "Start timestamp should be set");
+    }
+
+    function testStakeInMultiplePools() external {
+        vm.startPrank(owner);
+        token.addPool(address(lpToken1), 2e6, 365 days);
+        token.addPool(address(lpToken2), 3e6, 180 days);
+        vm.stopPrank();
+
+        lpToken1.mint(alice, 1000e6);
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), 1000e6);
+        token.stakeLP(0, 300e6);
+        vm.stopPrank();
+
+        lpToken2.mint(alice, 2000e6);
+        vm.startPrank(alice);
+        lpToken2.approve(address(token), 2000e6);
+        token.stakeLP(1, 500e6);
+        vm.stopPrank();
+
+        (uint256 staked0, ) = token.stakes(0, alice);
+        (uint256 staked1, ) = token.stakes(1, alice);
+
+        assertEq(staked0, 300e6, "Staked in pool 0 should match");
+        assertEq(staked1, 500e6, "Staked in pool 1 should match");
+    }
+
+    function testUnstakePartially() external {
+        vm.startPrank(owner);
+        token.addPool(address(lpToken1), 1e6, 365 days);
+
+        lpToken1.mint(alice, 1000e6);
+        vm.stopPrank();
+
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), 1000e6);
+        token.stakeLP(0, 300e6);
+
+        (uint224 staked, ) = token.stakes(0, alice);
+        assertEq(staked, 300e6, "Should have 300e6 left staked");
+
+        token.unstakeLP(0, 200e6);
+
+        assertEq(lpToken1.balanceOf(alice), 1000e6 - 300e6 + 200e6, "Alice should get back some LP");
+    }
+
+    function testUnstakeAll() external {
+        vm.startPrank(owner);
+        token.addPool(address(lpToken1), 1e6, 365 days);
+
+        lpToken1.mint(alice, 1000e6);
+        vm.stopPrank();
+
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), 1000e6);
+        token.stakeLP(0, 300e6);
+
+        (uint224 staked, ) = token.stakes(0, alice);
+        assertEq(staked, 300e6, "Should have 300e6 left staked");
+
+        token.unstakeLP(0, 300e6);
+
+        assertEq(lpToken1.balanceOf(alice), 1000e6, "Alice should get back some LP");
+    }
+
+    function testUnstakeMoreThanStakedReverts() external {
+        vm.startPrank(owner);
+        token.addPool(address(lpToken1), 1e6, 365 days);
+
+        lpToken1.mint(alice, 1000e6);
+        vm.stopPrank();
+
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), 1000e6);
+        token.stakeLP(0, 300e6);
+
+        (uint224 staked, ) = token.stakes(0, alice);
+        assertEq(staked, 300e6, "Should have 300e6 left staked");
+
+        vm.expectRevert("Not enough staked");
+        token.unstakeLP(0, 400e6);
+    }
+
+    function testUnstakeZeroAmountReverts() external {
+        vm.startPrank(owner);
+        token.addPool(address(lpToken1), 1e6, 365 days);
+
+        lpToken1.mint(alice, 1000e6);
+        vm.stopPrank();
+
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), 1000e6);
+        token.stakeLP(0, 300e6);
+
+        vm.expectRevert("amount=0");
+        token.unstakeLP(0, 0);
+    }
+
+    function testUnstakeWithoutStakeReverts() external {
+        vm.startPrank(owner);
+        token.addPool(address(lpToken1), 1e6, 365 days);
+
+        lpToken1.mint(alice, 1000e6);
+        vm.stopPrank();
+
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), 1000e6);
+        token.stakeLP(0, 300e6);
+
+        vm.startPrank(bob);
+        vm.expectRevert("Not enough staked");
+        token.unstakeLP(0, 100e6);
+    }
+
     /* ============ Helper functions ============ */
+
+    function getPoolData(
+        uint256 poolId
+    ) internal view returns (address lpTokenAddr, uint32 multiplierMax, uint32 timeThreshold) {
+        (lpTokenAddr, multiplierMax, timeThreshold) = token.pools(poolId);
+    }
 
     function _mint(address minter, address to, uint256 amount) internal {
         vm.prank(minter);
@@ -521,13 +678,19 @@ contract CompotaTokenTest is Test {
  * @dev Helper contract to simulate a minter contract.
  */
 contract MinterContract {
-    CompotaToken public token;
+    Compota public token;
 
     constructor(address tokenAddress) {
-        token = CompotaToken(tokenAddress);
+        token = Compota(tokenAddress);
     }
 
     function mintTokens(address to, uint256 amount) external {
         token.mint(to, amount);
+    }
+}
+
+contract MockLPToken is ERC20("Mock LP", "MLP", 18) {
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
     }
 }

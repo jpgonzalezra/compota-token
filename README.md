@@ -1,8 +1,8 @@
-## CompotaToken
+## Compota
 
 ## Overview
 
-CompotaToken is a custom ERC20 interest-bearing token that continuously accrues yield to its holders.
+Compota is a custom ERC20 interest-bearing token that continuously accrues yield to its holders.
 
 ## Key Features
 

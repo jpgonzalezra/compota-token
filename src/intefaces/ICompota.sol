@@ -4,7 +4,7 @@ pragma solidity 0.8.23;
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
 
-interface ICompotaToken is IERC20Extended {
+interface ICompota is IERC20Extended {
     /* ============ Events ============ */
 
     /**

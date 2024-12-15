@@ -2,11 +2,11 @@
 pragma solidity 0.8.23;
 
 import { Test } from "forge-std/Test.sol";
-import { CompotaToken } from "../../src/CompotaToken.sol";
-import { ICompotaToken } from "../../src/intefaces/ICompotaToken.sol";
+import { Compota } from "../../src/Compota.sol";
+import { ICompota } from "../../src/intefaces/ICompota.sol";
 
 contract FuzzTests is Test {
-    CompotaToken token;
+    Compota token;
     address owner = address(this);
     address alice = address(0x2);
     address bob = address(0x3);
@@ -17,7 +17,7 @@ contract FuzzTests is Test {
 
     function setUp() public {
         vm.startPrank(owner);
-        token = new CompotaToken(INTEREST_RATE, 1 days, 1_000_000_000e6);
+        token = new Compota(INTEREST_RATE, 1 days, 1_000_000_000e6);
         vm.stopPrank();
     }
 
@@ -109,13 +109,13 @@ contract FuzzTests is Test {
         vm.prank(owner);
 
         if (newRate < token.MIN_YEARLY_RATE() || newRate > token.MAX_YEARLY_RATE()) {
-            vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, newRate));
+            vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidYearlyRate.selector, newRate));
             token.setYearlyRate(newRate);
         } else {
             uint16 oldRate = token.yearlyRate();
 
             vm.expectEmit(true, true, true, true);
-            emit ICompotaToken.YearlyRateUpdated(oldRate, newRate);
+            emit ICompota.YearlyRateUpdated(oldRate, newRate);
 
             token.setYearlyRate(newRate);
 
