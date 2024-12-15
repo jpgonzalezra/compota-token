@@ -16,7 +16,7 @@ contract FuzzTests is Test {
 
     function setUp() public {
         vm.startPrank(owner);
-        token = new CompotaToken(INTEREST_RATE, 1 days);
+        token = new CompotaToken(INTEREST_RATE, 1 days, 1_000_000_000e6);
         vm.stopPrank();
     }
 
@@ -24,6 +24,14 @@ contract FuzzTests is Test {
         vm.assume(to != address(0));
         vm.assume(amount > 0);
         vm.assume(amount <= 1e24);
+
+        uint256 maxSupply = 1_000_000_000e6;
+        uint256 currentSupply = token.totalSupply();
+        uint256 remainingSupply = maxSupply - currentSupply;
+
+        if (amount > remainingSupply) {
+            amount = remainingSupply;
+        }
 
         vm.prank(owner);
         token.mint(to, amount);

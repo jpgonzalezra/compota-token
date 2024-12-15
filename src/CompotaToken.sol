@@ -31,10 +31,11 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
 
     uint224 internal _totalSupply;
 
+    uint224 public maxTotalSupply;
+
     uint32 public cooldownPeriod;
 
     address public minter;
-
     struct Balance {
         // 1st slot
         // @dev This timestamp will work until approximately the year 2106
@@ -49,10 +50,12 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
 
     constructor(
         uint16 yearlyRate_,
-        uint32 cooldownPeriod_
+        uint32 cooldownPeriod_,
+        uint224 maxTotalSupply_
     ) ERC20Extended("Compota Token", "COMPOTA", 6) Owned(msg.sender) {
         setYearlyRate(yearlyRate_);
         setCooldownPeriod(cooldownPeriod_);
+        maxTotalSupply = maxTotalSupply_;
     }
 
     /* ============ Interactive Functions ============ */
@@ -193,6 +196,14 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @param amount_ The amount of tokens to mint.
      */
     function _mint(address to_, uint256 amount_) internal virtual {
+        if (_totalSupply + amount_ > maxTotalSupply) {
+            amount_ = maxTotalSupply - _totalSupply;
+        }
+
+        if (amount_ == 0) {
+            return;
+        }
+
         _totalSupply += safe224(amount_);
 
         // Cannot overflow because the sum of all user
@@ -270,6 +281,7 @@ contract CompotaToken is ICompotaToken, ERC20Extended, Owned {
      * @return The amount of rewards accrued since the last update.
      */
     function _calculateRewards(uint224 amount_, uint256 timestamp_) internal view returns (uint224) {
+        if (_totalSupply == maxTotalSupply) return 0;
         if (timestamp_ == 0) return 0;
         uint256 timeElapsed;
         // Safe to use unchecked here, since `block.timestamp` is always greater than `_lastUpdateTimestamp[account_]`.

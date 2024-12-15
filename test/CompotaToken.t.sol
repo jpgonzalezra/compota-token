@@ -23,7 +23,7 @@ contract CompotaTokenTest is Test {
 
     function setUp() external {
         vm.prank(owner);
-        token = new CompotaToken(INTEREST_RATE, 1 days);
+        token = new CompotaToken(INTEREST_RATE, 1 days, 1_000_000_000e6);
         minterContract = address(new MinterContract(address(token)));
     }
 
@@ -220,16 +220,16 @@ contract CompotaTokenTest is Test {
     }
 
     function testConstructorInitializesYearlyRate() public {
-        CompotaToken newToken = new CompotaToken(500, 1 days);
+        CompotaToken newToken = new CompotaToken(500, 1 days, 1_000_000_000e6);
         assertEq(newToken.yearlyRate(), 500);
     }
 
     function testConstructorRevertsOnInvalidYearlyRate() public {
         vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 0));
-        new CompotaToken(0, 1 days);
+        new CompotaToken(0, 1 days, 1_000_000_000e6);
 
         vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, 50000));
-        new CompotaToken(50000, 1 days);
+        new CompotaToken(50000, 1 days, 1_000_000_000e6);
     }
 
     function testInterestAccumulationAfterTransfer() external {
@@ -427,6 +427,76 @@ contract CompotaTokenTest is Test {
         vm.expectEmit(true, true, true, true);
         emit ICompotaToken.MinterTransferred(address(0), minterEOA);
         token.transferMinter(minterEOA);
+    }
+
+    function testMintCannotExceedMaxTotalSupply() public {
+        uint224 maxSupply = 1_000_000 * 10e6;
+        vm.prank(owner);
+        token = new CompotaToken(INTEREST_RATE, 1 days, maxSupply);
+
+        uint256 mintable = 900_000 * 10e6;
+        _mint(owner, alice, mintable);
+
+        uint256 remaining = maxSupply - mintable;
+        _mint(owner, bob, remaining);
+
+        _mint(owner, bob, 1);
+        assertEq(token.totalSupply(), maxSupply);
+
+        vm.warp(block.timestamp + 100 days);
+        assertEq(token.totalSupply(), maxSupply);
+    }
+
+    function testMintPartialWhenNearMaxTotalSupply() public {
+        uint224 maxSupply = 1_000_000 * 10e6;
+        vm.prank(owner);
+        token = new CompotaToken(INTEREST_RATE, 1 days, maxSupply);
+
+        uint256 mintable = 999_999 * 10e6;
+        _mint(owner, alice, mintable);
+
+        uint256 remaining = maxSupply - mintable;
+
+        vm.prank(owner);
+        token.mint(bob, 2 * 10e6);
+
+        assertEq(token.balanceOf(bob), remaining);
+        assertEq(token.totalSupply(), maxSupply);
+    }
+
+    function testInterestAccrualRespectsMaxTotalSupply() external {
+        uint224 maxSupply = 600 * 10e6;
+        vm.prank(owner);
+        token = new CompotaToken(INTEREST_RATE, 1 days, maxSupply);
+
+        uint256 initialMint = 300 * 10e6;
+        _mint(owner, alice, initialMint);
+
+        uint256 balanceRaw = initialMint;
+
+        uint256 timeElapsed = 180 days;
+        vm.warp(block.timestamp + timeElapsed);
+
+        uint256 firstPeriodInterest = (balanceRaw * INTEREST_RATE * timeElapsed) / (SCALE_FACTOR * 365 days);
+        uint256 expectedSupply = balanceRaw + firstPeriodInterest;
+
+        uint256 totalSupplyAfterInterest = token.totalSupply();
+        assertEq(totalSupplyAfterInterest, expectedSupply, "Total supply after interest mismatch");
+        assertTrue(totalSupplyAfterInterest <= maxSupply, "Total supply exceeded maxTotalSupply");
+
+        uint256 additionalMint = 400 * 10e6;
+        uint256 remainingSupply = maxSupply - token.totalSupply();
+        uint256 adjustedMint = additionalMint > remainingSupply ? remainingSupply : additionalMint;
+        _mint(owner, alice, adjustedMint);
+
+        expectedSupply += adjustedMint;
+        assertEq(token.totalSupply(), expectedSupply, "Total supply should equal maxTotalSupply");
+
+        timeElapsed = 185 days;
+        vm.warp(block.timestamp + timeElapsed);
+
+        assertEq(token.totalSupply(), maxSupply, "Total supply should not exceed maxTotalSupply");
+        assertEq(token.balanceOf(alice), maxSupply, "Alice's balance should match maxTotalSupply");
     }
 
     /* ============ Helper functions ============ */
