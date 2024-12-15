@@ -13,6 +13,7 @@ contract FuzzTests is Test {
 
     uint16 constant INTEREST_RATE = 1000; // 10% APY
     uint256 constant INITIAL_MINT = 1000 * 10 ** 6;
+    uint256 constant MAX_SUPPLY = 1_000_000_000e6;
 
     function setUp() public {
         vm.startPrank(owner);
@@ -25,9 +26,8 @@ contract FuzzTests is Test {
         vm.assume(amount > 0);
         vm.assume(amount <= 1e24);
 
-        uint256 maxSupply = 1_000_000_000e6;
         uint256 currentSupply = token.totalSupply();
-        uint256 remainingSupply = maxSupply - currentSupply;
+        uint256 remainingSupply = MAX_SUPPLY - currentSupply;
 
         if (amount > remainingSupply) {
             amount = remainingSupply;
