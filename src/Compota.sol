@@ -5,6 +5,7 @@ import { Owned } from "solmate/auth/Owned.sol";
 import { ERC20Extended } from "@mzero-labs/ERC20Extended.sol";
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
 import { ICompota } from "./intefaces/ICompota.sol";
+import { IUniswapV2Pair } from "./intefaces/IUniswapV2Pair.sol";
 
 /**
  * @title Compota
@@ -108,7 +109,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
     // TODO: DOC
     function addPool(address lpToken_, uint32 multiplierMax_, uint32 timeThreshold_) external onlyOwner {
-        require(multiplierMax_ >= 1e6, "Mmax < 1");
+        require(multiplierMax_ >= 1e6, "multiplierMax < 1");
         require(timeThreshold_ > 0, "timeThreshold = 0");
         pools.push(Pool({ lpToken: lpToken_, multiplierMax: multiplierMax_, timeThreshold: timeThreshold_ }));
     }
@@ -307,9 +308,12 @@ contract Compota is ICompota, ERC20Extended, Owned {
             return;
         }
 
-        uint256 rewards = _calculateCurrentRewards(account_);
-        if (rewards > 0) {
-            _mint(account_, rewards);
+        uint256 baseRewards = _calculateCurrentRewards(account_);
+        uint256 stakingRewards = _calculateAllCurrentRewardsStaking(account_);
+
+        uint256 totalRewards = baseRewards + stakingRewards;
+        if (totalRewards > 0) {
+            _mint(account_, totalRewards);
         }
         _balances[account_].lastUpdateTimestamp = timestamp;
     }
@@ -323,6 +327,69 @@ contract Compota is ICompota, ERC20Extended, Owned {
         uint32 lastUpdateTimestamp = _balances[account_].lastUpdateTimestamp;
         if (lastUpdateTimestamp == 0) return 0;
         return _calculateRewards(_balances[account_].value, lastUpdateTimestamp);
+    }
+
+    // TODO: DOC
+    function _calculateAllCurrentRewardsStaking(address account_) internal view returns (uint256) {
+        uint256 totalStakingRewards = 0;
+        for (uint256 i = 0; i < pools.length; i++) {
+            totalStakingRewards += _calculateCurrentRewardsStaking(i, account_);
+        }
+        return totalStakingRewards;
+    }
+
+    // TODO: DOC
+    function _calculateCurrentRewardsStaking(uint256 poolId, address account_) internal view returns (uint256) {
+        StakeInfo memory stakeInfo = stakes[poolId][account_];
+        uint224 lpAmount = stakeInfo.lpBalanceStaked;
+        if (lpAmount == 0) return 0;
+        if (_balances[account_].lastUpdateTimestamp == 0) return 0;
+
+        uint32 lastUpdateTimestamp = _balances[account_].lastUpdateTimestamp;
+        uint256 timeElapsed = block.timestamp - lastUpdateTimestamp;
+        if (timeElapsed == 0) return 0;
+
+        if (stakeInfo.lpStakeStartTimestamp == 0) {
+            return 0;
+        }
+
+        uint256 timeStaked = block.timestamp - stakeInfo.lpStakeStartTimestamp;
+        Pool memory pool = pools[poolId];
+
+        (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(pool.lpToken).getReserves();
+        address token0 = IUniswapV2Pair(pool.lpToken).token0();
+        uint256 reserve = (token0 == address(this)) ? reserve0 : reserve1;
+
+        if (reserve == 0) {
+            return 0;
+        }
+
+        uint256 lpTotalSupply = IERC20(pool.lpToken).totalSupply();
+        uint256 compotas = (uint256(lpAmount) * reserve) / lpTotalSupply;
+
+        uint256 cubicMultiplier = _calculateCubicMultiplier(pool.multiplierMax, pool.timeThreshold, timeStaked);
+
+        uint256 rewardsStaking = (compotas * yearlyRate * timeElapsed * cubicMultiplier) /
+            (SCALE_FACTOR * uint256(SECONDS_PER_YEAR) * 1e6);
+
+        return rewardsStaking;
+    }
+
+    function _calculateCubicMultiplier(
+        uint256 multiplierMax,
+        uint256 timeThreshold,
+        uint256 timeStaked
+    ) internal pure returns (uint256) {
+        if (timeStaked >= timeThreshold) {
+            return multiplierMax;
+        }
+        uint256 ratio = (timeStaked * 1e6) / timeThreshold;
+        uint256 ratioCubed = (ratio ^ 3) / (1e6 * 1e6);
+
+        uint256 one = 1e6;
+        uint256 cubicMultiplier = one + ((multiplierMax - one) * ratioCubed) / one;
+
+        return cubicMultiplier;
     }
 
     /**

@@ -6,6 +6,7 @@ import { Compota } from "../src/Compota.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
 import { ICompota } from "../src/intefaces/ICompota.sol";
 import { ERC20 } from "solmate/tokens/ERC20.sol";
+import { IUniswapV2Pair } from "../src/intefaces/IUniswapV2Pair.sol";
 
 contract CompotaTest is Test {
     Compota token;
@@ -23,12 +24,20 @@ contract CompotaTest is Test {
     uint256 constant TRANSFER_AMOUNT = 300 * 10e6;
     uint256 constant INSUFFICIENT_AMOUNT = 0;
     uint16 constant INTEREST_RATE = 1000; // 10% APY in BPS
+    uint32 constant TIME_THRESHOLD = 365 days;
+    uint32 constant MULTIPLIER_MAX = 2e6; // Max multiplier (scaled by 1e6)
 
     function setUp() external {
         vm.prank(owner);
         token = new Compota(INTEREST_RATE, 1 days, 1_000_000_000e6);
-        lpToken1 = new MockLPToken();
-        lpToken2 = new MockLPToken();
+        lpToken1 = new MockLPToken(
+            address(token),
+            address(0) // ETH as token1
+        );
+        lpToken2 = new MockLPToken(
+            address(token),
+            address(0) // ETH as token1
+        );
         minterContract = address(new MinterContract(address(token)));
     }
 
@@ -650,6 +659,63 @@ contract CompotaTest is Test {
         token.unstakeLP(0, 100e6);
     }
 
+    function testRewardsCalculation() external {
+        // Add LP pool to Compota
+        vm.startPrank(owner);
+        token.addPool(address(lpToken1), MULTIPLIER_MAX, TIME_THRESHOLD);
+
+        // Mint and transfer tokens for testing
+        WETH weth = new WETH();
+        token.mint(alice, 10_000e6); // Alice starts with 10,000 COMPOTA tokens
+        weth.mint(alice, 10e18); // Alice has 10 weth
+        lpToken1.mint(alice, 100e18);
+
+        vm.stopPrank();
+
+        // Approve tokens for the LP pool
+        vm.startPrank(alice);
+        token.approve(address(lpToken1), type(uint256).max);
+        weth.approve(address(lpToken1), type(uint256).max);
+        // Approve LP tokens for Compota
+        lpToken1.approve(address(token), type(uint256).max);
+
+        // Alice stakes 10 LP tokens in the Compota contract
+        uint256 lpAmount = 10e18; // 10 LP tokens
+        token.stakeLP(0, lpAmount); // Stake in poolId = 0
+
+        // Fast forward 10 days
+        vm.warp(block.timestamp + 10 days);
+
+        // Calculate expected base rewards
+        uint256 timeElapsed = 10 days;
+        uint256 baseRewards = (10_000e6 * SCALE_FACTOR * timeElapsed) / (10_000 * 31_536_000); // SCALE_FACTOR and SECONDS_PER_YEAR
+
+        // Calculate expected staking rewards
+        uint256 timeStaked = timeElapsed;
+        uint256 cubicMultiplier = 1e6 + (((MULTIPLIER_MAX - 1e6) * (timeStaked ** 3)) / (uint256(TIME_THRESHOLD) ** 3));
+        uint256 lpTotalSupply = lpToken1.totalSupply();
+        uint112 reserveCompota = lpToken1.reserve0(); // Assuming token0 is COMPOTA
+        uint256 compotaShare = (lpAmount * reserveCompota) / lpTotalSupply;
+        uint256 stakingRewards = (compotaShare * SCALE_FACTOR * timeElapsed * cubicMultiplier) /
+            (1e6 * 31_536_000 * 10_000);
+
+        // Claim rewards and verify balances
+        token.claimRewards();
+        vm.stopPrank();
+
+        uint256 totalExpectedRewards = baseRewards + stakingRewards;
+        uint256 aliceBalance = token.balanceOf(alice);
+
+        // Verify base rewards
+        assertApproxEqAbs(baseRewards, baseRewards, 1, "Base rewards mismatch");
+
+        // Verify staking rewards
+        assertApproxEqAbs(stakingRewards, stakingRewards, 1, "Staking rewards mismatch");
+
+        // Verify total rewards
+        assertApproxEqAbs(aliceBalance, 10_000e6 + totalExpectedRewards, 1, "Total rewards mismatch");
+    }
+
     /* ============ Helper functions ============ */
 
     function getPoolData(
@@ -689,8 +755,33 @@ contract MinterContract {
     }
 }
 
-contract MockLPToken is ERC20("Mock LP", "MLP", 18) {
+contract WETH is ERC20("Wrapper Ethereum", "WETH", 18) {
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
+    }
+}
+
+contract MockLPToken is ERC20("Mock LP", "MLP", 18) {
+    uint112 public reserve0;
+    uint112 public reserve1;
+    address public token0;
+    address public token1;
+
+    constructor(address _token0, address _token1) {
+        token0 = _token0;
+        token1 = _token1;
+    }
+
+    function setReserves(uint112 _reserve0, uint112 _reserve1) external {
+        reserve0 = _reserve0;
+        reserve1 = _reserve1;
+    }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+
+    function getReserves() external view returns (uint112, uint112) {
+        return (reserve0, reserve1);
     }
 }
