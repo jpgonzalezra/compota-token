@@ -22,10 +22,10 @@ interface ICompota is IERC20Extended {
 
     /**
      * @notice Emitted when the cooldown period is updated.
-     * @param oldCooldownPeriod The cooldown period before the update, in seconds.
-     * @param newCooldownPeriod The cooldown period after the update, in seconds.
+     * @param oldRewardCooldownPeriod The reward cooldown period before the update, in seconds.
+     * @param newRewardCooldownPeriod The reward cooldown period after the update, in seconds.
      */
-    event CooldownPeriodUpdated(uint32 oldCooldownPeriod, uint32 newCooldownPeriod);
+    event RewardCooldownPeriodUpdated(uint32 oldRewardCooldownPeriod, uint32 newRewardCooldownPeriod);
 
     /**
      * @notice Emitted when the minter role is transferred to a new address.
@@ -39,7 +39,7 @@ interface ICompota is IERC20Extended {
     error InvalidYearlyRate(uint16 rate);
 
     /// @notice Error thrown when the cooldown is invalid.
-    error InvalidCooldownPeriod(uint32 cooldownPeriod);
+    error InvalidRewardCooldownPeriod(uint32 cooldownPeriod);
 
     /// @notice Error thrown when the balance is insufficient for a specific operation.
     error InsufficientBalance(uint256 amount);
@@ -48,7 +48,7 @@ interface ICompota is IERC20Extended {
     error InvalidUInt224();
 
     /// @notice Emitted when a user attempts to claim rewards before the cooldown period has elapsed.
-    error CooldownNotCompleted(uint32 remainingCooldown);
+    error RewardCooldownPeriodNotCompleted(uint32 remainingCooldown);
 
     /// @notice Emitted when a function is called by an address that is not authorized to perform the action.
     error Unauthorized();

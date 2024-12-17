@@ -28,52 +28,52 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
     uint16 public yearlyRate;
 
-    uint32 public latestUpdateTimestamp;
+    uint32 public lastGlobalUpdateTimestamp;
 
-    uint224 internal _totalSupply;
+    uint224 internal internalTotalSupply;
 
     uint224 public maxTotalSupply;
 
-    uint32 public cooldownPeriod;
+    uint32 public rewardCooldownPeriod;
 
-    Pool[] public pools;
+    StakingPool[] public pools;
 
-    address[] public stakers;
-    mapping(address => bool) private _isStaker;
+    address[] public activeStakers;
+    mapping(address => bool) private isActiveStaker;
 
     // stakes[poolId][user]
-    mapping(uint256 => mapping(address => StakeInfo)) public stakes;
+    mapping(uint256 => mapping(address => UserStake)) public stakes;
 
-    struct Pool {
+    struct StakingPool {
         address lpToken;
         uint32 multiplierMax;
         uint32 timeThreshold;
     }
 
-    struct StakeInfo {
+    struct UserStake {
         uint32 lpStakeStartTimestamp;
         uint224 lpBalanceStaked;
     }
 
-    struct Balance {
+    struct AccountBalance {
         // 1st slot
         // @dev This timestamp will work until approximately the year 2106
         uint32 lastUpdateTimestamp;
         uint224 value;
     }
 
-    mapping(address => Balance) internal _balances;
+    mapping(address => AccountBalance) internal _balances;
     mapping(address => uint32) internal _latestClaimTimestamp;
 
     /* ============ Constructor ============ */
 
     constructor(
         uint16 yearlyRate_,
-        uint32 cooldownPeriod_,
+        uint32 rewardCooldownPeriod_,
         uint224 maxTotalSupply_
     ) ERC20Extended("Compota Token", "COMPOTA", 6) Owned(msg.sender) {
         setYearlyRate(yearlyRate_);
-        setCooldownPeriod(cooldownPeriod_);
+        setRewardCooldownPeriod(rewardCooldownPeriod_);
         maxTotalSupply = maxTotalSupply_;
     }
 
@@ -95,27 +95,27 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     /**
-     * @notice Updates the cooldown period required between reward claims.
+     * @notice Updates the reward cooldown period required between reward claims.
      * @dev Only the owner can call this function.
-     * @param newCooldownPeriod_ The new coolddown period.
+     * @param newRewardCooldownPeriod_ The new reward cooldown period.
      */
-    function setCooldownPeriod(uint32 newCooldownPeriod_) public onlyOwner {
-        if (newCooldownPeriod_ == 0) {
-            revert InvalidCooldownPeriod(newCooldownPeriod_);
+    function setRewardCooldownPeriod(uint32 newRewardCooldownPeriod_) public onlyOwner {
+        if (newRewardCooldownPeriod_ == 0) {
+            revert InvalidRewardCooldownPeriod(newRewardCooldownPeriod_);
         }
-        uint32 oldCooldownPeriod_ = cooldownPeriod;
-        cooldownPeriod = newCooldownPeriod_;
-        emit CooldownPeriodUpdated(oldCooldownPeriod_, newCooldownPeriod_);
+        uint32 oldCooldownPeriod_ = rewardCooldownPeriod;
+        rewardCooldownPeriod = newRewardCooldownPeriod_;
+        emit RewardCooldownPeriodUpdated(oldCooldownPeriod_, newRewardCooldownPeriod_);
     }
 
     // TODO: DOC
-    function addPool(address lpToken_, uint32 multiplierMax_, uint32 timeThreshold_) external onlyOwner {
+    function addStakingPool(address lpToken_, uint32 multiplierMax_, uint32 timeThreshold_) external onlyOwner {
         require(multiplierMax_ >= 1e6, "multiplierMax < 1");
         require(timeThreshold_ > 0, "timeThreshold = 0");
-        pools.push(Pool({ lpToken: lpToken_, multiplierMax: multiplierMax_, timeThreshold: timeThreshold_ }));
+        pools.push(StakingPool({ lpToken: lpToken_, multiplierMax: multiplierMax_, timeThreshold: timeThreshold_ }));
     }
 
-    function stakeLP(uint256 poolId_, uint256 amount_) external {
+    function stakeLiquidity(uint256 poolId_, uint256 amount_) external {
         require(poolId_ < pools.length, "Invalid poolId");
         require(amount_ > 0, "amount=0");
         address caller = msg.sender;
@@ -124,34 +124,34 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
         IERC20(pools[poolId_].lpToken).transferFrom(caller, address(this), amount_);
 
-        StakeInfo storage stakeInfo = stakes[poolId_][caller];
+        UserStake storage stakeInfo = stakes[poolId_][caller];
         if (stakeInfo.lpBalanceStaked == 0) {
             stakeInfo.lpStakeStartTimestamp = uint32(block.timestamp);
 
-            if (!_isStaker[caller]) {
-                stakers.push(caller);
-                _isStaker[caller] = true;
+            if (!isActiveStaker[caller]) {
+                activeStakers.push(caller);
+                isActiveStaker[caller] = true;
             }
         }
-        stakeInfo.lpBalanceStaked += safe224(amount_);
+        stakeInfo.lpBalanceStaked += toSafeUint224(amount_);
     }
 
-    function unstakeLP(uint256 poolId, uint256 amount_) external {
+    function unstakeLiquidity(uint256 poolId, uint256 amount_) external {
         require(poolId < pools.length, "Invalid poolId");
         require(amount_ > 0, "amount=0");
 
         address caller = msg.sender;
         _updateRewards(caller);
 
-        StakeInfo storage stakeInfo = stakes[poolId][caller];
+        UserStake storage stakeInfo = stakes[poolId][caller];
         uint224 staked = stakeInfo.lpBalanceStaked;
         require(staked >= amount_, "Not enough staked");
 
-        stakeInfo.lpBalanceStaked = staked - safe224(amount_);
+        stakeInfo.lpBalanceStaked = staked - toSafeUint224(amount_);
 
         if (stakeInfo.lpBalanceStaked == 0) {
             stakeInfo.lpStakeStartTimestamp = 0;
-            _removeStaker(caller);
+            _removeActiveStaker(caller);
         }
 
         IERC20(pools[poolId].lpToken).transfer(caller, amount_);
@@ -191,8 +191,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
     function balanceOf(address account_) external view override returns (uint256) {
         return
             _balances[account_].value +
-            _calculateCurrentBaseRewards(account_) +
-            _calculateAllCurrentRewardsStaking(account_);
+            _calculatePendingBaseRewards(account_) +
+            _calculateTotalUserStakingRewards(account_);
     }
 
     /**
@@ -201,7 +201,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @inheritdoc IERC20
      */
     function totalSupply() external view returns (uint256 totalSupply_) {
-        return uint256(_totalSupply + _calculateTotalBaseRewards() + _calculateTotalStakingRewards());
+        return uint256(internalTotalSupply + _calculateGlobalBaseRewards() + _calculateGlobalStakingRewards());
     }
 
     /**
@@ -213,8 +213,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
         uint32 currentTimestamp = uint32(block.timestamp);
         uint32 latestClaim = _latestClaimTimestamp[caller];
 
-        if (currentTimestamp - latestClaim < cooldownPeriod) {
-            revert CooldownNotCompleted(latestClaim + cooldownPeriod - currentTimestamp);
+        if (currentTimestamp - latestClaim < rewardCooldownPeriod) {
+            revert RewardCooldownPeriodNotCompleted(latestClaim + rewardCooldownPeriod - currentTimestamp);
         }
 
         _latestClaimTimestamp[caller] = currentTimestamp;
@@ -225,13 +225,13 @@ contract Compota is ICompota, ERC20Extended, Owned {
     /* ============ Internal Interactive Functions ============ */
 
     // TODO: doc
-    function _removeStaker(address staker) internal {
-        uint256 length = stakers.length;
+    function _removeActiveStaker(address staker) internal {
+        uint256 length = activeStakers.length;
         for (uint256 i = 0; i < length; i++) {
-            if (stakers[i] == staker) {
-                stakers[i] = stakers[length - 1];
-                stakers.pop();
-                _isStaker[staker] = false;
+            if (activeStakers[i] == staker) {
+                activeStakers[i] = activeStakers[length - 1];
+                activeStakers.pop();
+                isActiveStaker[staker] = false;
                 break;
             }
         }
@@ -250,12 +250,12 @@ contract Compota is ICompota, ERC20Extended, Owned {
         _updateRewards(sender_);
         _updateRewards(recipient_);
 
-        _balances[sender_].value -= safe224(amount_);
+        _balances[sender_].value -= toSafeUint224(amount_);
 
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint224 value.
         unchecked {
-            _balances[recipient_].value += safe224(amount_);
+            _balances[recipient_].value += toSafeUint224(amount_);
         }
 
         emit Transfer(sender_, recipient_, amount_);
@@ -267,20 +267,20 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @param amount_ The amount of tokens to mint.
      */
     function _mint(address to_, uint256 amount_) internal virtual {
-        if (_totalSupply + amount_ > maxTotalSupply) {
-            amount_ = maxTotalSupply - _totalSupply;
+        if (internalTotalSupply + amount_ > maxTotalSupply) {
+            amount_ = maxTotalSupply - internalTotalSupply;
         }
 
         if (amount_ == 0) {
             return;
         }
 
-        _totalSupply += safe224(amount_);
+        internalTotalSupply += toSafeUint224(amount_);
 
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint224 value.
         unchecked {
-            _balances[to_].value += safe224(amount_);
+            _balances[to_].value += toSafeUint224(amount_);
         }
 
         emit Transfer(address(0), to_, amount_);
@@ -292,12 +292,12 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @param amount_ The amount of tokens to burn.
      */
     function _burn(address from_, uint256 amount_) internal virtual {
-        _balances[from_].value -= safe224(amount_);
+        _balances[from_].value -= toSafeUint224(amount_);
 
         // Cannot underflow because a user's balance
         // will never be larger than the total supply.
         unchecked {
-            _totalSupply -= safe224(amount_);
+            internalTotalSupply -= toSafeUint224(amount_);
         }
 
         emit Transfer(from_, address(0), amount_);
@@ -309,7 +309,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
      */
     function _updateRewards(address account_) internal {
         uint32 timestamp = uint32(block.timestamp);
-        latestUpdateTimestamp = timestamp;
+        lastGlobalUpdateTimestamp = timestamp;
 
         if (_balances[account_].lastUpdateTimestamp == 0) {
             _balances[account_].lastUpdateTimestamp = timestamp;
@@ -318,8 +318,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
             return;
         }
 
-        uint256 baseRewards = _calculateCurrentBaseRewards(account_);
-        uint256 stakingRewards = _calculateAllCurrentRewardsStaking(account_);
+        uint256 baseRewards = _calculatePendingBaseRewards(account_);
+        uint256 stakingRewards = _calculateTotalUserStakingRewards(account_);
 
         uint256 totalRewards = baseRewards + stakingRewards;
         if (totalRewards > 0) {
@@ -333,7 +333,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @param account_ The address of the account for which rewards will be calculated.
      * @return The amount of rewards accrued since the last update.
      */
-    function _calculateCurrentBaseRewards(address account_) internal view returns (uint256) {
+    function _calculatePendingBaseRewards(address account_) internal view returns (uint256) {
         uint32 lastUpdateTimestamp = _balances[account_].lastUpdateTimestamp;
         if (lastUpdateTimestamp == 0) return 0;
         return _calculateRewards(_balances[account_].value, lastUpdateTimestamp);
@@ -351,17 +351,17 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     // TODO: DOC
-    function _calculateAllCurrentRewardsStaking(address account_) internal view returns (uint256) {
+    function _calculateTotalUserStakingRewards(address account_) internal view returns (uint256) {
         uint256 totalStakingRewards = 0;
         for (uint256 i = 0; i < pools.length; i++) {
-            totalStakingRewards += _calculatePoolRewardsStaking(i, account_);
+            totalStakingRewards += _calculatePoolStakingRewards(i, account_);
         }
         return totalStakingRewards;
     }
 
     // TODO: DOC
-    function _calculatePoolRewardsStaking(uint256 poolId, address account_) internal view returns (uint256) {
-        StakeInfo memory stakeInfo = stakes[poolId][account_];
+    function _calculatePoolStakingRewards(uint256 poolId, address account_) internal view returns (uint256) {
+        UserStake memory stakeInfo = stakes[poolId][account_];
         uint224 lpAmount = stakeInfo.lpBalanceStaked;
         if (lpAmount == 0) return 0;
         if (_balances[account_].lastUpdateTimestamp == 0) return 0;
@@ -375,7 +375,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         }
 
         uint256 timeStaked = block.timestamp - stakeInfo.lpStakeStartTimestamp;
-        Pool memory pool = pools[poolId];
+        StakingPool memory pool = pools[poolId];
 
         (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(pool.lpToken).getReserves();
         address token0 = IUniswapV2Pair(pool.lpToken).token0();
@@ -417,26 +417,26 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @notice Calculates the total current accrued rewards for the entire supply since the last update.
      * @return The amount of rewards accrued since the last update.
      */
-    function _calculateTotalBaseRewards() internal view returns (uint224) {
-        if (latestUpdateTimestamp == 0) return 0;
-        return _calculateRewards(_totalSupply, latestUpdateTimestamp);
+    function _calculateGlobalBaseRewards() internal view returns (uint224) {
+        if (lastGlobalUpdateTimestamp == 0) return 0;
+        return _calculateRewards(internalTotalSupply, lastGlobalUpdateTimestamp);
     }
 
     /**
      *TODO
      */
-    function _calculateTotalStakingRewards() internal view returns (uint224) {
+    function _calculateGlobalStakingRewards() internal view returns (uint224) {
         uint256 totalStakingRewards = 0;
 
-        for (uint256 i = 0; i < stakers.length; i++) {
-            address staker = stakers[i];
+        for (uint256 i = 0; i < activeStakers.length; i++) {
+            address staker = activeStakers[i];
 
             for (uint256 poolId = 0; poolId < pools.length; poolId++) {
-                totalStakingRewards += _calculatePoolRewardsStaking(poolId, staker);
+                totalStakingRewards += _calculatePoolStakingRewards(poolId, staker);
             }
         }
 
-        return safe224(totalStakingRewards);
+        return toSafeUint224(totalStakingRewards);
     }
 
     /**
@@ -446,20 +446,20 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @return The amount of rewards accrued since the last update.
      */
     function _calculateRewards(uint224 amount_, uint256 timestamp_) internal view returns (uint224) {
-        if (_totalSupply == maxTotalSupply) return 0;
+        if (internalTotalSupply == maxTotalSupply) return 0;
         if (timestamp_ == 0) return 0;
         uint256 timeElapsed;
         // Safe to use unchecked here, since `block.timestamp` is always greater than `_lastUpdateTimestamp[account_]`.
         unchecked {
             timeElapsed = block.timestamp - timestamp_;
         }
-        return safe224((amount_ * timeElapsed * yearlyRate) / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR)));
+        return toSafeUint224((amount_ * timeElapsed * yearlyRate) / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR)));
     }
 
     /**
      * @dev Reverts if the balance is insufficient.
      * @param caller_ Caller
-     * @param amount_ Balance to check.
+     * @param amount_ AccountBalance to check.
      */
     function _revertIfInsufficientBalance(address caller_, uint256 amount_) internal view {
         uint224 balance = _balances[caller_].value;
@@ -489,7 +489,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @return The value casted to uint224.
      * @dev Based on https://github.com/MZero-Labs/common/blob/main/src/libs/UIntMath.sol
      */
-    function safe224(uint256 n) internal pure returns (uint224) {
+    function toSafeUint224(uint256 n) internal pure returns (uint224) {
         if (n > type(uint224).max) revert InvalidUInt224();
         return uint224(n);
     }

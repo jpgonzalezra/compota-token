@@ -44,7 +44,7 @@ contract CompotaTest is Test {
         assertEq(token.name(), "Compota Token");
         assertEq(token.symbol(), "COMPOTA");
         assertEq(token.yearlyRate(), 1e3);
-        assertEq(token.cooldownPeriod(), 1 days);
+        assertEq(token.rewardCooldownPeriod(), 1 days);
     }
 
     function testMintingByOwner() external {
@@ -294,13 +294,13 @@ contract CompotaTest is Test {
         assertEq(token.totalSupply(), totalSupply + expectedRewards);
     }
 
-    function testClaimRewardsCooldownNotCompleted() public {
+    function testClaimRewardsRewardCooldownPeriodNotCompleted() public {
         vm.prank(owner);
         token.mint(alice, 1000 * 10e6);
 
         vm.prank(alice);
 
-        vm.expectRevert(abi.encodeWithSelector(ICompota.CooldownNotCompleted.selector, 1 days));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.RewardCooldownPeriodNotCompleted.selector, 1 days));
         token.claimRewards();
     }
 
@@ -313,7 +313,7 @@ contract CompotaTest is Test {
         token.claimRewards();
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(ICompota.CooldownNotCompleted.selector, 1 days));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.RewardCooldownPeriodNotCompleted.selector, 1 days));
         token.claimRewards();
 
         vm.warp(block.timestamp + 1 days);
@@ -326,8 +326,8 @@ contract CompotaTest is Test {
         _mint(owner, alice, INITIAL_SUPPLY);
 
         vm.prank(owner);
-        token.setCooldownPeriod(12 hours);
-        assertEq(token.cooldownPeriod(), 12 hours);
+        token.setRewardCooldownPeriod(12 hours);
+        assertEq(token.rewardCooldownPeriod(), 12 hours);
 
         vm.warp(block.timestamp + 15 days);
 
@@ -349,13 +349,13 @@ contract CompotaTest is Test {
         token.claimRewards();
 
         vm.prank(owner);
-        token.setCooldownPeriod(3 days);
-        assertEq(token.cooldownPeriod(), 3 days);
+        token.setRewardCooldownPeriod(3 days);
+        assertEq(token.rewardCooldownPeriod(), 3 days);
 
         vm.warp(block.timestamp + 2 days);
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(ICompota.CooldownNotCompleted.selector, 1 days));
+        vm.expectRevert(abi.encodeWithSelector(ICompota.RewardCooldownPeriodNotCompleted.selector, 1 days));
         token.claimRewards();
     }
 
@@ -385,13 +385,13 @@ contract CompotaTest is Test {
     function testSetCooldownPeriodByNonOwnerFails() public {
         vm.prank(alice);
         vm.expectRevert("UNAUTHORIZED");
-        token.setCooldownPeriod(12 hours);
+        token.setRewardCooldownPeriod(12 hours);
     }
 
     function testSetCooldownPeriodToZero() public {
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidCooldownPeriod.selector, 0));
-        token.setCooldownPeriod(0);
+        vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidRewardCooldownPeriod.selector, 0));
+        token.setRewardCooldownPeriod(0);
     }
 
     function testMintCannotExceedMaxTotalSupply() public {
@@ -466,8 +466,8 @@ contract CompotaTest is Test {
 
     function testOwnerCanAddMultiplePools() external {
         vm.startPrank(owner);
-        token.addPool(address(lpToken1), 2e6, 365 days);
-        token.addPool(address(lpToken2), 3e6, 180 days);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        token.addStakingPool(address(lpToken2), 3e6, 180 days);
         vm.stopPrank();
 
         (address poolLp1, uint256 multiplierMax1, uint256 timeThreshold1) = getPoolData(0);
@@ -483,14 +483,14 @@ contract CompotaTest is Test {
 
     function testStakeInSinglePool() external {
         vm.startPrank(owner);
-        token.addPool(address(lpToken1), 2e6, 365 days);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
         vm.stopPrank();
 
         lpToken1.mint(alice, 1000e6);
 
         vm.startPrank(alice);
         lpToken1.approve(address(token), 500e6);
-        token.stakeLP(0, 500e6);
+        token.stakeLiquidity(0, 500e6);
         vm.stopPrank();
 
         (uint32 startTs, uint224 staked) = token.stakes(0, alice);
@@ -500,20 +500,20 @@ contract CompotaTest is Test {
 
     function testStakeInMultiplePools() external {
         vm.startPrank(owner);
-        token.addPool(address(lpToken1), 2e6, 365 days);
-        token.addPool(address(lpToken2), 3e6, 180 days);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        token.addStakingPool(address(lpToken2), 3e6, 180 days);
         vm.stopPrank();
 
         lpToken1.mint(alice, 1000e6);
         vm.startPrank(alice);
         lpToken1.approve(address(token), 1000e6);
-        token.stakeLP(0, 300e6);
+        token.stakeLiquidity(0, 300e6);
         vm.stopPrank();
 
         lpToken2.mint(alice, 2000e6);
         vm.startPrank(alice);
         lpToken2.approve(address(token), 2000e6);
-        token.stakeLP(1, 500e6);
+        token.stakeLiquidity(1, 500e6);
         vm.stopPrank();
 
         (, uint224 staked0) = token.stakes(0, alice);
@@ -525,95 +525,95 @@ contract CompotaTest is Test {
 
     function testUnstakePartially() external {
         vm.startPrank(owner);
-        token.addPool(address(lpToken1), 1e6, 365 days);
+        token.addStakingPool(address(lpToken1), 1e6, 365 days);
 
         lpToken1.mint(alice, 1000e6);
         vm.stopPrank();
 
         vm.startPrank(alice);
         lpToken1.approve(address(token), 1000e6);
-        token.stakeLP(0, 300e6);
+        token.stakeLiquidity(0, 300e6);
 
         (, uint224 staked) = token.stakes(0, alice);
         assertEq(staked, 300e6, "Should have 300e6 left staked");
 
-        token.unstakeLP(0, 200e6);
+        token.unstakeLiquidity(0, 200e6);
 
         assertEq(lpToken1.balanceOf(alice), 1000e6 - 300e6 + 200e6, "Alice should get back some LP");
     }
 
     function testUnstakeAll() external {
         vm.startPrank(owner);
-        token.addPool(address(lpToken1), 1e6, 365 days);
+        token.addStakingPool(address(lpToken1), 1e6, 365 days);
 
         lpToken1.mint(alice, 1000e6);
         vm.stopPrank();
 
         vm.startPrank(alice);
         lpToken1.approve(address(token), 1000e6);
-        token.stakeLP(0, 300e6);
+        token.stakeLiquidity(0, 300e6);
 
         (, uint224 staked) = token.stakes(0, alice);
         assertEq(staked, 300e6, "Should have 300e6 left staked");
 
-        token.unstakeLP(0, 300e6);
+        token.unstakeLiquidity(0, 300e6);
 
         assertEq(lpToken1.balanceOf(alice), 1000e6, "Alice should get back some LP");
     }
 
     function testUnstakeMoreThanStakedReverts() external {
         vm.startPrank(owner);
-        token.addPool(address(lpToken1), 1e6, 365 days);
+        token.addStakingPool(address(lpToken1), 1e6, 365 days);
 
         lpToken1.mint(alice, 1000e6);
         vm.stopPrank();
 
         vm.startPrank(alice);
         lpToken1.approve(address(token), 1000e6);
-        token.stakeLP(0, 300e6);
+        token.stakeLiquidity(0, 300e6);
 
         (, uint224 staked) = token.stakes(0, alice);
         assertEq(staked, 300e6, "Should have 300e6 left staked");
 
         vm.expectRevert("Not enough staked");
-        token.unstakeLP(0, 400e6);
+        token.unstakeLiquidity(0, 400e6);
     }
 
     function testUnstakeZeroAmountReverts() external {
         vm.startPrank(owner);
-        token.addPool(address(lpToken1), 1e6, 365 days);
+        token.addStakingPool(address(lpToken1), 1e6, 365 days);
 
         lpToken1.mint(alice, 1000e6);
         vm.stopPrank();
 
         vm.startPrank(alice);
         lpToken1.approve(address(token), 1000e6);
-        token.stakeLP(0, 300e6);
+        token.stakeLiquidity(0, 300e6);
 
         vm.expectRevert("amount=0");
-        token.unstakeLP(0, 0);
+        token.unstakeLiquidity(0, 0);
     }
 
     function testUnstakeWithoutStakeReverts() external {
         vm.startPrank(owner);
-        token.addPool(address(lpToken1), 1e6, 365 days);
+        token.addStakingPool(address(lpToken1), 1e6, 365 days);
 
         lpToken1.mint(alice, 1000e6);
         vm.stopPrank();
 
         vm.startPrank(alice);
         lpToken1.approve(address(token), 1000e6);
-        token.stakeLP(0, 300e6);
+        token.stakeLiquidity(0, 300e6);
 
         vm.startPrank(bob);
         vm.expectRevert("Not enough staked");
-        token.unstakeLP(0, 100e6);
+        token.unstakeLiquidity(0, 100e6);
     }
 
     function testRewardsCalculation() external {
         // Add LP pool to Compota
         vm.startPrank(owner);
-        token.addPool(address(lpToken1), MULTIPLIER_MAX, TIME_THRESHOLD);
+        token.addStakingPool(address(lpToken1), MULTIPLIER_MAX, TIME_THRESHOLD);
 
         // Mint and transfer tokens for testing
         WETH weth = new WETH();
@@ -636,7 +636,7 @@ contract CompotaTest is Test {
 
         // Alice stakes 10 LP tokens in the Compota contract
         uint256 lpAmount = 10e18; // 10 LP tokens
-        token.stakeLP(0, lpAmount); // Stake in poolId = 0
+        token.stakeLiquidity(0, lpAmount); // Stake in poolId = 0
 
         // Fast forward 10 days
         vm.warp(block.timestamp + 10 days);
