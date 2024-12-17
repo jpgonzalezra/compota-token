@@ -7,14 +7,13 @@ import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
 import { ICompota } from "../src/intefaces/ICompota.sol";
 import { ERC20 } from "solmate/tokens/ERC20.sol";
 import { IUniswapV2Pair } from "../src/intefaces/IUniswapV2Pair.sol";
+import "forge-std/console.sol";
 
 contract CompotaTest is Test {
     Compota token;
     address owner = address(1);
     address alice = address(2);
     address bob = address(3);
-    address minterEOA = address(4);
-    address minterContract;
     MockLPToken lpToken1;
     MockLPToken lpToken2;
 
@@ -38,7 +37,6 @@ contract CompotaTest is Test {
             address(token),
             address(0) // ETH as token1
         );
-        minterContract = address(new MinterContract(address(token)));
     }
 
     function testInitialization() external view {
@@ -57,7 +55,7 @@ contract CompotaTest is Test {
     function testMintingFailsByNonOwner() external {
         // Alice tries to mint tokens
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(ICompota.Unauthorized.selector));
+        vm.expectRevert("UNAUTHORIZED");
         token.mint(alice, INITIAL_SUPPLY);
     }
 
@@ -67,7 +65,7 @@ contract CompotaTest is Test {
         token.transferOwnership(alice);
 
         // owner should not be able to mint tokens anymore
-        vm.expectRevert(abi.encodeWithSelector(ICompota.Unauthorized.selector));
+        vm.expectRevert("UNAUTHORIZED");
         token.mint(bob, INITIAL_SUPPLY);
 
         // alice should be able to mint tokens now
@@ -396,53 +394,6 @@ contract CompotaTest is Test {
         token.setCooldownPeriod(0);
     }
 
-    function testMinterCanMintTokens() public {
-        vm.prank(owner);
-        token.transferMinter(minterEOA);
-
-        vm.prank(minterEOA);
-        token.mint(alice, INITIAL_SUPPLY);
-
-        assertEq(token.balanceOf(alice), INITIAL_SUPPLY);
-    }
-
-    function testNonMinterCannotMintTokens() public {
-        vm.prank(owner);
-        token.transferMinter(minterEOA);
-
-        vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(ICompota.Unauthorized.selector));
-        token.mint(alice, INITIAL_SUPPLY);
-    }
-
-    function testOnlyOwnerCanChangeMinter() public {
-        vm.prank(bob);
-        vm.expectRevert("UNAUTHORIZED");
-        token.transferMinter(minterEOA);
-
-        vm.prank(owner);
-        token.transferMinter(minterEOA);
-
-        assertEq(token.minter(), minterEOA);
-    }
-
-    function testMinterContractCanMintTokens() public {
-        vm.prank(owner);
-        token.transferMinter(minterContract);
-
-        vm.prank(minterContract);
-        MinterContract(minterContract).mintTokens(alice, INITIAL_SUPPLY);
-
-        assertEq(token.balanceOf(alice), INITIAL_SUPPLY);
-    }
-
-    function testMinterTransferEmitsEvent() public {
-        vm.prank(owner);
-        vm.expectEmit(true, true, true, true);
-        emit ICompota.MinterTransferred(address(0), minterEOA);
-        token.transferMinter(minterEOA);
-    }
-
     function testMintCannotExceedMaxTotalSupply() public {
         uint224 maxSupply = 1_000_000 * 10e6;
         vm.prank(owner);
@@ -542,7 +493,7 @@ contract CompotaTest is Test {
         token.stakeLP(0, 500e6);
         vm.stopPrank();
 
-        (uint256 staked, uint32 startTs) = token.stakes(0, alice);
+        (uint32 startTs, uint224 staked) = token.stakes(0, alice);
         assertEq(staked, 500e6, "Staked amount should be recorded");
         assertTrue(startTs > 0, "Start timestamp should be set");
     }
@@ -565,8 +516,8 @@ contract CompotaTest is Test {
         token.stakeLP(1, 500e6);
         vm.stopPrank();
 
-        (uint256 staked0, ) = token.stakes(0, alice);
-        (uint256 staked1, ) = token.stakes(1, alice);
+        (, uint224 staked0) = token.stakes(0, alice);
+        (, uint224 staked1) = token.stakes(1, alice);
 
         assertEq(staked0, 300e6, "Staked in pool 0 should match");
         assertEq(staked1, 500e6, "Staked in pool 1 should match");
@@ -583,7 +534,7 @@ contract CompotaTest is Test {
         lpToken1.approve(address(token), 1000e6);
         token.stakeLP(0, 300e6);
 
-        (uint224 staked, ) = token.stakes(0, alice);
+        (, uint224 staked) = token.stakes(0, alice);
         assertEq(staked, 300e6, "Should have 300e6 left staked");
 
         token.unstakeLP(0, 200e6);
@@ -602,7 +553,7 @@ contract CompotaTest is Test {
         lpToken1.approve(address(token), 1000e6);
         token.stakeLP(0, 300e6);
 
-        (uint224 staked, ) = token.stakes(0, alice);
+        (, uint224 staked) = token.stakes(0, alice);
         assertEq(staked, 300e6, "Should have 300e6 left staked");
 
         token.unstakeLP(0, 300e6);
@@ -621,7 +572,7 @@ contract CompotaTest is Test {
         lpToken1.approve(address(token), 1000e6);
         token.stakeLP(0, 300e6);
 
-        (uint224 staked, ) = token.stakes(0, alice);
+        (, uint224 staked) = token.stakes(0, alice);
         assertEq(staked, 300e6, "Should have 300e6 left staked");
 
         vm.expectRevert("Not enough staked");
@@ -667,8 +618,11 @@ contract CompotaTest is Test {
         // Mint and transfer tokens for testing
         WETH weth = new WETH();
         token.mint(alice, 10_000e6); // Alice starts with 10,000 COMPOTA tokens
-        weth.mint(alice, 10e18); // Alice has 10 weth
-        lpToken1.mint(alice, 100e18);
+        weth.mint(alice, 10e18); // Alice has 10 WETH
+        lpToken1.mint(alice, 100e18); // Mint LP tokens for Alice
+
+        // Set reserves for the mock LP token
+        lpToken1.setReserves(1000e6, 1 ether); // 1000 COMPOTA, 1 ETH
 
         vm.stopPrank();
 
@@ -676,6 +630,7 @@ contract CompotaTest is Test {
         vm.startPrank(alice);
         token.approve(address(lpToken1), type(uint256).max);
         weth.approve(address(lpToken1), type(uint256).max);
+
         // Approve LP tokens for Compota
         lpToken1.approve(address(token), type(uint256).max);
 
@@ -688,7 +643,7 @@ contract CompotaTest is Test {
 
         // Calculate expected base rewards
         uint256 timeElapsed = 10 days;
-        uint256 baseRewards = (10_000e6 * SCALE_FACTOR * timeElapsed) / (10_000 * 31_536_000); // SCALE_FACTOR and SECONDS_PER_YEAR
+        uint256 baseRewards = (10_000e6 * SCALE_FACTOR * timeElapsed) / (10_000 * 31_536_000);
 
         // Calculate expected staking rewards
         uint256 timeStaked = timeElapsed;
@@ -700,11 +655,16 @@ contract CompotaTest is Test {
             (1e6 * 31_536_000 * 10_000);
 
         // Claim rewards and verify balances
-        token.claimRewards();
-        vm.stopPrank();
 
         uint256 totalExpectedRewards = baseRewards + stakingRewards;
         uint256 aliceBalance = token.balanceOf(alice);
+
+        console.log(baseRewards);
+        console.log(stakingRewards);
+        console.log(totalExpectedRewards);
+
+        token.claimRewards();
+        vm.stopPrank();
 
         // Verify base rewards
         assertApproxEqAbs(baseRewards, baseRewards, 1, "Base rewards mismatch");
@@ -737,21 +697,6 @@ contract CompotaTest is Test {
     function _transfer(address from, address to, uint256 amount) internal {
         vm.prank(from);
         token.transfer(to, amount);
-    }
-}
-
-/**
- * @dev Helper contract to simulate a minter contract.
- */
-contract MinterContract {
-    Compota public token;
-
-    constructor(address tokenAddress) {
-        token = Compota(tokenAddress);
-    }
-
-    function mintTokens(address to, uint256 amount) external {
-        token.mint(to, amount);
     }
 }
 
