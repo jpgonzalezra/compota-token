@@ -405,7 +405,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
             return multiplierMax;
         }
         uint256 ratio = (timeStaked * 1e6) / timeThreshold;
-        uint256 ratioCubed = (ratio ^ 3) / (1e6 * 1e6);
+        uint256 ratioCubed = (ratio * ratio * ratio) / (1e6 * 1e6);
 
         uint256 one = 1e6;
         uint256 cubicMultiplier = one + ((multiplierMax - one) * ratioCubed) / one;
