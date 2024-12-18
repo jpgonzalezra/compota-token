@@ -4,8 +4,8 @@ pragma solidity 0.8.23;
 import { Owned } from "solmate/auth/Owned.sol";
 import { ERC20Extended } from "@mzero-labs/ERC20Extended.sol";
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
-import { ICompota } from "./intefaces/ICompota.sol";
-import { IUniswapV2Pair } from "./intefaces/IUniswapV2Pair.sol";
+import { ICompota } from "./interfaces/ICompota.sol";
+import { IUniswapV2Pair } from "./interfaces/IUniswapV2Pair.sol";
 
 /**
  * @title Compota
