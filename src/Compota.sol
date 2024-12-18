@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.23;
 
+import { console } from "forge-std/console.sol";
 import { Owned } from "solmate/auth/Owned.sol";
 import { ERC20Extended } from "@mzero-labs/ERC20Extended.sol";
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
@@ -322,15 +323,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
         AccountBalance storage account = _balances[accountAddress];
         uint32 lastUpdate = account.lastUpdateTimestamp;
         if (lastUpdate == 0) {
+            account.periodStartTimestamp = timestamp_;
             account.lastUpdateTimestamp = timestamp_;
             _latestClaimTimestamp[accountAddress] = timestamp_;
             emit StartedEarningRewards(accountAddress);
             return;
-        }
-
-        uint32 elapsed = timestamp_ - lastUpdate;
-        if (elapsed > 0 && account.value > 0) {
-            account.accumulatedBalancePerTime += account.value * elapsed;
         }
 
         uint256 pendingBaseRewards = _calculatePendingBaseRewards(accountAddress, timestamp_);
@@ -428,7 +425,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
         for (uint256 i = 0; i < pools.length; i++) {
             UserStake storage stakeInfo = stakes[i][account_];
             if (stakeInfo.lpBalanceStaked == 0) {
-                // Si no hay stake, no hay nada que resetear
                 continue;
             }
             stakeInfo.periodStartTimestamp = timestamp_;
@@ -449,6 +445,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
             : 0;
 
         uint224 tempAccumulatedBalancePerTime = account.accumulatedBalancePerTime;
+        console.log("elapsedSinceLastUpdate", elapsedSinceLastUpdate);
+        console.log("tempAccumulatedBalancePerTime", tempAccumulatedBalancePerTime);
         if (elapsedSinceLastUpdate > 0 && account.value > 0) {
             tempAccumulatedBalancePerTime += account.value * elapsedSinceLastUpdate;
         }
@@ -461,6 +459,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
             return 0;
         }
 
+        console.log("totalElapsed", totalElapsed);
         uint224 avgBalance = tempAccumulatedBalancePerTime / totalElapsed;
 
         return _calculateRewards(avgBalance, totalElapsed);
@@ -474,6 +473,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         for (uint256 i = 0; i < pools.length; i++) {
             totalStakingRewards += _calculatePoolPendingStakingRewards(i, account_, currentTimestamp_);
         }
+        console.log(totalStakingRewards);
         return totalStakingRewards;
     }
 
