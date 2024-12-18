@@ -166,7 +166,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
     function mint(address to_, uint256 amount_) external onlyOwner {
         _revertIfInvalidRecipient(to_);
         _revertIfInsufficientAmount(amount_);
-        _updateRewards(to_);
+        _updateRewardsWithoutCooldown(to_, uint32(block.timestamp));
         _mint(to_, amount_);
     }
 
@@ -177,7 +177,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
     function burn(uint256 amount_) external {
         _revertIfInsufficientAmount(amount_);
         address caller = msg.sender;
-        _updateRewards(caller);
+        _updateRewardsWithoutCooldown(caller, uint32(block.timestamp));
         _revertIfInsufficientBalance(msg.sender, amount_);
         _burn(caller, amount_);
     }
@@ -210,15 +210,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
      */
     function claimRewards() external {
         address caller = msg.sender;
-        uint32 currentTimestamp = uint32(block.timestamp);
-        uint32 latestClaim = _latestClaimTimestamp[caller];
-
-        if (currentTimestamp - latestClaim < rewardCooldownPeriod) {
-            revert RewardCooldownPeriodNotCompleted(latestClaim + rewardCooldownPeriod - currentTimestamp);
-        }
-
-        _latestClaimTimestamp[caller] = currentTimestamp;
-
         _updateRewards(caller);
     }
 
@@ -303,17 +294,12 @@ contract Compota is ICompota, ERC20Extended, Owned {
         emit Transfer(from_, address(0), amount_);
     }
 
-    /**
-     * @notice Updates the accrued rewards for the specified account.
-     * @param account_ The address of the account for which rewards will be updated.
-     */
-    function _updateRewards(address account_) internal {
-        uint32 timestamp = uint32(block.timestamp);
-        lastGlobalUpdateTimestamp = timestamp;
+    function _updateRewardsWithoutCooldown(address account_, uint32 timestamp_) internal {
+        lastGlobalUpdateTimestamp = timestamp_;
 
         if (_balances[account_].lastUpdateTimestamp == 0) {
-            _balances[account_].lastUpdateTimestamp = timestamp;
-            _latestClaimTimestamp[account_] = timestamp;
+            _balances[account_].lastUpdateTimestamp = timestamp_;
+            _latestClaimTimestamp[account_] = timestamp_;
             emit StartedEarningRewards(account_);
             return;
         }
@@ -325,7 +311,23 @@ contract Compota is ICompota, ERC20Extended, Owned {
         if (totalRewards > 0) {
             _mint(account_, totalRewards);
         }
-        _balances[account_].lastUpdateTimestamp = timestamp;
+        _balances[account_].lastUpdateTimestamp = timestamp_;
+    }
+
+    /**
+     * @notice Updates the accrued rewards for the specified account.
+     * @param account_ The address of the account for which rewards will be updated.
+     */
+    function _updateRewards(address account_) internal {
+        uint32 timestamp = uint32(block.timestamp);
+
+        uint32 latestClaim = _latestClaimTimestamp[account_];
+        if (timestamp - latestClaim < rewardCooldownPeriod) {
+            return;
+        }
+
+        _latestClaimTimestamp[account_] = timestamp;
+        _updateRewardsWithoutCooldown(account_, timestamp);
     }
 
     /**
