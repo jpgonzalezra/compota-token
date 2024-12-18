@@ -392,7 +392,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
             return;
         }
 
-\        _updateRewardsWithoutCooldown(account_, timestamp);
+       _updateRewardsWithoutCooldown(account_, timestamp);
     }
 
 
