@@ -53,13 +53,18 @@ contract Compota is ICompota, ERC20Extended, Owned {
     struct UserStake {
         uint32 lpStakeStartTimestamp;
         uint224 lpBalanceStaked;
+        uint32 periodStartTimestamp;
+        uint224 accumulatedLpBalancePerTime;
+        uint32 lastStakeUpdateTimestamp;
     }
-
     struct AccountBalance {
         // 1st slot
         // @dev This timestamp will work until approximately the year 2106
         uint32 lastUpdateTimestamp;
         uint224 value;
+        // 2do slot
+        uint32 periodStartTimestamp;
+        uint224 accumulatedBalancePerTime;
     }
 
     mapping(address => AccountBalance) internal _balances;
@@ -189,10 +194,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @inheritdoc IERC20
      */
     function balanceOf(address account_) external view override returns (uint256) {
+        uint32 timestamp = uint32(block.timestamp);
         return
             _balances[account_].value +
-            _calculatePendingBaseRewards(account_) +
-            _calculateTotalUserStakingRewards(account_);
+            _calculatePendingBaseRewards(account_, timestamp) +
+            _calculatePendingStakingRewards(account_, timestamp);
     }
 
     /**
@@ -294,24 +300,44 @@ contract Compota is ICompota, ERC20Extended, Owned {
         emit Transfer(from_, address(0), amount_);
     }
 
-    function _updateRewardsWithoutCooldown(address account_, uint32 timestamp_) internal {
-        lastGlobalUpdateTimestamp = timestamp_;
-
-        if (_balances[account_].lastUpdateTimestamp == 0) {
-            _balances[account_].lastUpdateTimestamp = timestamp_;
-            _latestClaimTimestamp[account_] = timestamp_;
-            emit StartedEarningRewards(account_);
+    function _updateRewardsWithoutCooldown(address accountAddress, uint32 timestamp_) internal {
+        AccountBalance storage account = _balances[accountAddress];
+        uint32 lastUpdate = account.lastUpdateTimestamp;
+        if (lastUpdate == 0) {
+            account.lastUpdateTimestamp = timestamp_;
+            _latestClaimTimestamp[accountAddress] = timestamp_;
+            emit StartedEarningRewards(accountAddress);
             return;
         }
 
-        uint256 baseRewards = _calculatePendingBaseRewards(account_);
-        uint256 stakingRewards = _calculateTotalUserStakingRewards(account_);
-
-        uint256 totalRewards = baseRewards + stakingRewards;
-        if (totalRewards > 0) {
-            _mint(account_, totalRewards);
+        uint32 elapsed = timestamp_ - lastUpdate;
+        if (elapsed > 0 && account.value > 0) {
+            account.accumulatedBalancePerTime += account.value * elapsed;
         }
-        _balances[account_].lastUpdateTimestamp = timestamp_;
+
+        uint256 pendingBaseRewards = _calculatePendingBaseRewards(accountAddress, lastUpdate);
+        uint256 stakingRewards = _calculatePendingStakingRewards(accountAddress, lastUpdate);
+
+        uint256 totalRewards = pendingBaseRewards + stakingRewards;
+        if (totalRewards > 0) {
+            _mint(accountAddress, totalRewards);
+        }
+        account.periodStartTimestamp = timestamp_;
+        account.accumulatedBalancePerTime = 0;
+        account.lastUpdateTimestamp = timestamp_;
+
+        for (uint256 i = 0; i < pools.length; i++) {
+            UserStake storage stakeInfo = stakes[i][accountAddress];
+            if (stakeInfo.lpBalanceStaked == 0) {
+                continue;
+            }
+            stakeInfo.periodStartTimestamp = timestamp_;
+            stakeInfo.accumulatedLpBalancePerTime = 0;
+            stakeInfo.lastStakeUpdateTimestamp = timestamp_;
+        }
+
+        lastGlobalUpdateTimestamp = timestamp_;
+        _latestClaimTimestamp[accountAddress] = timestamp_;
     }
 
     /**
@@ -323,7 +349,23 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
         uint32 latestClaim = _latestClaimTimestamp[account_];
         if (timestamp - latestClaim < rewardCooldownPeriod) {
-            return;
+            AccountBalance memory account = _balances[account_];
+            uint32 elapsed = timestamp - account.lastUpdateTimestamp;
+            if (elapsed > 0 && account.value > 0) {
+                account.accumulatedBalancePerTime += account.value * elapsed;
+            }
+            account.lastUpdateTimestamp = timestamp;
+
+            for (uint256 i = 0; i < pools.length; i++) {
+                UserStake storage stakeInfo = stakes[i][account_];
+                if (stakeInfo.lpBalanceStaked == 0 || stakeInfo.lastStakeUpdateTimestamp == 0) continue;
+
+                uint32 lpElapsed = uint32(block.timestamp) - stakeInfo.lastStakeUpdateTimestamp;
+                if (lpElapsed > 0 && stakeInfo.lpBalanceStaked > 0) {
+                    stakeInfo.accumulatedLpBalancePerTime += stakeInfo.lpBalanceStaked * lpElapsed;
+                    stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
+                }
+            }
         }
 
         _latestClaimTimestamp[account_] = timestamp;
@@ -331,54 +373,79 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     /**
-     * @notice Calculates the current accrued rewards for a specific account since the last update.
-     * @param account_ The address of the account for which rewards will be calculated.
-     * @return The amount of rewards accrued since the last update.
      */
-    function _calculatePendingBaseRewards(address account_) internal view returns (uint256) {
-        uint32 lastUpdateTimestamp = _balances[account_].lastUpdateTimestamp;
-        if (lastUpdateTimestamp == 0) return 0;
-        return _calculateRewards(_balances[account_].value, lastUpdateTimestamp);
-    }
+    function _calculatePendingBaseRewards(address account_, uint32 currentTimestamp_) internal view returns (uint256) {
+        AccountBalance memory account = _balances[account_];
 
-    /**
-     * @notice Calculates the current accrued rewards for a specific account since the last update.
-     * @param account_ The address of the account for which rewards will be calculated.
-     * @return The amount of rewards accrued since the last update.
-     */
-    function _calculateCurrentStakingRewards(address account_) internal view returns (uint256) {
-        uint32 lastUpdateTimestamp = _balances[account_].lastUpdateTimestamp;
-        if (lastUpdateTimestamp == 0) return 0;
-        return _calculateRewards(_balances[account_].value, lastUpdateTimestamp);
+        if (account.periodStartTimestamp == 0) {
+            return 0;
+        }
+
+        uint32 elapsedSinceLastUpdate = currentTimestamp_ > account.lastUpdateTimestamp
+            ? currentTimestamp_ - account.lastUpdateTimestamp
+            : 0;
+
+        uint224 tempAccumulatedBalancePerTime = account.accumulatedBalancePerTime;
+        if (elapsedSinceLastUpdate > 0 && account.value > 0) {
+            tempAccumulatedBalancePerTime += account.value * elapsedSinceLastUpdate;
+        }
+
+        uint32 totalElapsed = currentTimestamp_ > account.periodStartTimestamp
+            ? currentTimestamp_ - account.periodStartTimestamp
+            : 0;
+
+        if (totalElapsed == 0 || tempAccumulatedBalancePerTime == 0) {
+            return 0;
+        }
+
+        uint224 avgBalance = tempAccumulatedBalancePerTime / totalElapsed;
+
+        return _calculateRewards(avgBalance, totalElapsed);
     }
 
     // TODO: DOC
-    function _calculateTotalUserStakingRewards(address account_) internal view returns (uint256) {
+    function _calculatePendingStakingRewards(
+        address account_,
+        uint32 currentTimestamp_
+    ) internal view returns (uint256) {
         uint256 totalStakingRewards = 0;
         for (uint256 i = 0; i < pools.length; i++) {
-            totalStakingRewards += _calculatePoolStakingRewards(i, account_);
+            totalStakingRewards += _calculatePoolPendingStakingRewards(i, account_, currentTimestamp_);
         }
         return totalStakingRewards;
     }
 
     // TODO: DOC
-    function _calculatePoolStakingRewards(uint256 poolId, address account_) internal view returns (uint256) {
+    function _calculatePoolPendingStakingRewards(
+        uint256 poolId,
+        address account_,
+        uint32 currentTimestamp_
+    ) internal view returns (uint256) {
         UserStake memory stakeInfo = stakes[poolId][account_];
-        uint224 lpAmount = stakeInfo.lpBalanceStaked;
-        if (lpAmount == 0) return 0;
-        if (_balances[account_].lastUpdateTimestamp == 0) return 0;
+        if (stakeInfo.lpBalanceStaked == 0 || stakeInfo.periodStartTimestamp == 0) return 0;
 
-        uint32 lastUpdateTimestamp = _balances[account_].lastUpdateTimestamp;
-        uint256 timeElapsed = block.timestamp - lastUpdateTimestamp;
-        if (timeElapsed == 0) return 0;
+        uint32 elapsedSinceLastUpdate = currentTimestamp_ > stakeInfo.lastStakeUpdateTimestamp
+            ? currentTimestamp_ - stakeInfo.lastStakeUpdateTimestamp
+            : 0;
 
-        if (stakeInfo.lpStakeStartTimestamp == 0) {
-            return 0;
+        uint224 tempAccumulated = stakeInfo.accumulatedLpBalancePerTime;
+        if (elapsedSinceLastUpdate > 0 && stakeInfo.lpBalanceStaked > 0) {
+            tempAccumulated += stakeInfo.lpBalanceStaked * elapsedSinceLastUpdate;
         }
 
-        uint256 timeStaked = block.timestamp - stakeInfo.lpStakeStartTimestamp;
-        StakingPool memory pool = pools[poolId];
+        uint32 totalElapsed = currentTimestamp_ > stakeInfo.periodStartTimestamp
+            ? currentTimestamp_ - stakeInfo.periodStartTimestamp
+            : 0;
 
+        if (totalElapsed == 0 || tempAccumulated == 0) return 0;
+
+        uint224 avgLpStaked = tempAccumulated / totalElapsed;
+
+        uint256 timeStaked = stakeInfo.lpStakeStartTimestamp > 0
+            ? (currentTimestamp_ - stakeInfo.lpStakeStartTimestamp)
+            : 0;
+
+        StakingPool memory pool = pools[poolId];
         (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(pool.lpToken).getReserves();
         address token0 = IUniswapV2Pair(pool.lpToken).token0();
         uint256 reserve = (token0 == address(this)) ? reserve0 : reserve1;
@@ -388,11 +455,12 @@ contract Compota is ICompota, ERC20Extended, Owned {
         }
 
         uint256 lpTotalSupply = IERC20(pool.lpToken).totalSupply();
-        uint256 compotaReserve = (uint256(lpAmount) * reserve) / lpTotalSupply;
+        if (lpTotalSupply == 0) return 0;
 
+        uint256 tokenQuantity = (uint256(avgLpStaked) * reserve) / lpTotalSupply;
         uint256 cubicMultiplier = _calculateCubicMultiplier(pool.multiplierMax, pool.timeThreshold, timeStaked);
 
-        uint256 rewardsStaking = (compotaReserve * yearlyRate * timeElapsed * cubicMultiplier) /
+        uint256 rewardsStaking = (tokenQuantity * yearlyRate * totalElapsed * cubicMultiplier) /
             (SCALE_FACTOR * uint256(SECONDS_PER_YEAR) * 1e6);
 
         return rewardsStaking;
@@ -430,11 +498,12 @@ contract Compota is ICompota, ERC20Extended, Owned {
     function _calculateGlobalStakingRewards() internal view returns (uint224) {
         uint256 totalStakingRewards = 0;
 
+        uint32 timestamp = uint32(block.timestamp);
         for (uint256 i = 0; i < activeStakers.length; i++) {
             address staker = activeStakers[i];
 
             for (uint256 poolId = 0; poolId < pools.length; poolId++) {
-                totalStakingRewards += _calculatePoolStakingRewards(poolId, staker);
+                totalStakingRewards += _calculatePoolPendingStakingRewards(poolId, staker, timestamp);
             }
         }
 
@@ -442,20 +511,12 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     /**
-     * @notice Generalized function to calculate rewards based on an amount and a timestamp.
-     * @param amount_ The amount of tokens to calculate rewards for.
-     * @param timestamp_ The timestamp to calculate rewards from.
-     * @return The amount of rewards accrued since the last update.
+     *
      */
-    function _calculateRewards(uint224 amount_, uint256 timestamp_) internal view returns (uint224) {
+    function _calculateRewards(uint224 amount_, uint256 elapsed_) internal view returns (uint224) {
         if (internalTotalSupply == maxTotalSupply) return 0;
-        if (timestamp_ == 0) return 0;
-        uint256 timeElapsed;
-        // Safe to use unchecked here, since `block.timestamp` is always greater than `_lastUpdateTimestamp[account_]`.
-        unchecked {
-            timeElapsed = block.timestamp - timestamp_;
-        }
-        return toSafeUint224((amount_ * timeElapsed * yearlyRate) / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR)));
+        if (elapsed_ == 0) return 0;
+        return toSafeUint224((amount_ * elapsed_ * yearlyRate) / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR)));
     }
 
     /**
