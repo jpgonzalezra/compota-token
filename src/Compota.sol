@@ -392,9 +392,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
             return;
         }
 
-       _updateRewardsWithoutCooldown(account_, timestamp);
+        _updateRewardsWithoutCooldown(account_, timestamp);
     }
-
 
     function _updateStakingAccumulation(uint256 poolId_, address account_) internal {
         UserStake storage stakeInfo = stakes[poolId_][account_];
@@ -589,15 +588,15 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
     function _revertIfInsufficientBalance(address caller_, uint256 amount_) internal view {
         uint224 balance = _balances[caller_].value;
-        if (balance < amount_) revert InsufficientBalance();
+        if (balance < amount_) revert InsufficientBalance(amount_);
     }
 
     function _revertIfInsufficientAmount(uint256 amount_) internal pure {
-        if (amount_ == 0) revert InsufficientAmount();
+        if (amount_ == 0) revert InsufficientAmount(amount_);
     }
 
     function _revertIfInvalidRecipient(address recipient_) internal pure {
-        if (recipient_ == address(0)) revert InvalidRecipient();
+        if (recipient_ == address(0)) revert InvalidRecipient(recipient_);
     }
 
     /**

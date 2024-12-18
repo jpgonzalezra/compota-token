@@ -4,9 +4,9 @@ pragma solidity 0.8.23;
 import { Test } from "forge-std/Test.sol";
 import { Compota } from "../src/Compota.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
-import { ICompota } from "../src/intefaces/ICompota.sol";
+import { ICompota } from "../src/interfaces/ICompota.sol";
 import { ERC20 } from "solmate/tokens/ERC20.sol";
-import { IUniswapV2Pair } from "../src/intefaces/IUniswapV2Pair.sol";
+import { IUniswapV2Pair } from "../src/interfaces/IUniswapV2Pair.sol";
 import "forge-std/console.sol";
 
 contract CompotaTest is Test {
@@ -500,7 +500,7 @@ contract CompotaTest is Test {
         token.stakeLiquidity(0, 500e6);
         vm.stopPrank();
 
-        (uint32 startTs, uint224 staked) = token.stakes(0, alice);
+        (uint32 startTs, uint224 staked, , , ) = token.stakes(0, alice);
         assertEq(staked, 500e6, "Staked amount should be recorded");
         assertTrue(startTs > 0, "Start timestamp should be set");
     }
@@ -523,8 +523,8 @@ contract CompotaTest is Test {
         token.stakeLiquidity(1, 500e6);
         vm.stopPrank();
 
-        (, uint224 staked0) = token.stakes(0, alice);
-        (, uint224 staked1) = token.stakes(1, alice);
+        (, uint224 staked0, , , ) = token.stakes(0, alice);
+        (, uint224 staked1, , , ) = token.stakes(1, alice);
 
         assertEq(staked0, 300e6, "Staked in pool 0 should match");
         assertEq(staked1, 500e6, "Staked in pool 1 should match");
@@ -541,7 +541,7 @@ contract CompotaTest is Test {
         lpToken1.approve(address(token), 1000e6);
         token.stakeLiquidity(0, 300e6);
 
-        (, uint224 staked) = token.stakes(0, alice);
+        (, uint224 staked, , , ) = token.stakes(0, alice);
         assertEq(staked, 300e6, "Should have 300e6 left staked");
 
         token.unstakeLiquidity(0, 200e6);
@@ -560,7 +560,7 @@ contract CompotaTest is Test {
         lpToken1.approve(address(token), 1000e6);
         token.stakeLiquidity(0, 300e6);
 
-        (, uint224 staked) = token.stakes(0, alice);
+        (, uint224 staked, , , ) = token.stakes(0, alice);
         assertEq(staked, 300e6, "Should have 300e6 left staked");
 
         token.unstakeLiquidity(0, 300e6);
@@ -579,7 +579,7 @@ contract CompotaTest is Test {
         lpToken1.approve(address(token), 1000e6);
         token.stakeLiquidity(0, 300e6);
 
-        (, uint224 staked) = token.stakes(0, alice);
+        (, uint224 staked, , , ) = token.stakes(0, alice);
         assertEq(staked, 300e6, "Should have 300e6 left staked");
 
         vm.expectRevert("Not enough staked");
