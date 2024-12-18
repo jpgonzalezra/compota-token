@@ -54,9 +54,10 @@ contract Compota is ICompota, ERC20Extended, Owned {
         uint32 lpStakeStartTimestamp;
         uint224 lpBalanceStaked;
         uint32 periodStartTimestamp;
-        uint224 accumulatedLpBalancePerTime;
         uint32 lastStakeUpdateTimestamp;
+        uint224 accumulatedLpBalancePerTime;
     }
+
     struct AccountBalance {
         // 1st slot
         // @dev This timestamp will work until approximately the year 2106
@@ -137,8 +138,19 @@ contract Compota is ICompota, ERC20Extended, Owned {
                 activeStakers.push(caller);
                 isActiveStaker[caller] = true;
             }
+
+            // Initialize staking period if not set
+            if (stakeInfo.periodStartTimestamp == 0) {
+                stakeInfo.periodStartTimestamp = uint32(block.timestamp);
+                stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
+            }
         }
+
+        // Before modifying the balance, update the staking accumulation
+        _updateStakingAccumulation(poolId_, caller);
+
         stakeInfo.lpBalanceStaked += toSafeUint224(amount_);
+        stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
     }
 
     function unstakeLiquidity(uint256 poolId, uint256 amount_) external {
@@ -152,9 +164,16 @@ contract Compota is ICompota, ERC20Extended, Owned {
         uint224 staked = stakeInfo.lpBalanceStaked;
         require(staked >= amount_, "Not enough staked");
 
+        // Update staking accumulation before modifying the balance
+        _updateStakingAccumulation(poolId, caller);
+
         stakeInfo.lpBalanceStaked = staked - toSafeUint224(amount_);
+        stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
 
         if (stakeInfo.lpBalanceStaked == 0) {
+            stakeInfo.periodStartTimestamp = 0;
+            stakeInfo.accumulatedLpBalancePerTime = 0;
+            stakeInfo.lastStakeUpdateTimestamp = 0;
             stakeInfo.lpStakeStartTimestamp = 0;
             _removeActiveStaker(caller);
         }
@@ -183,7 +202,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         _revertIfInsufficientAmount(amount_);
         address caller = msg.sender;
         _updateRewardsWithoutCooldown(caller, uint32(block.timestamp));
-        _revertIfInsufficientBalance(msg.sender, amount_);
+        _revertIfInsufficientBalance(caller, amount_);
         _burn(caller, amount_);
     }
 
@@ -296,7 +315,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
         unchecked {
             internalTotalSupply -= toSafeUint224(amount_);
         }
-
         emit Transfer(from_, address(0), amount_);
     }
 
@@ -315,13 +333,20 @@ contract Compota is ICompota, ERC20Extended, Owned {
             account.accumulatedBalancePerTime += account.value * elapsed;
         }
 
-        uint256 pendingBaseRewards = _calculatePendingBaseRewards(accountAddress, lastUpdate);
-        uint256 stakingRewards = _calculatePendingStakingRewards(accountAddress, lastUpdate);
+        uint256 pendingBaseRewards = _calculatePendingBaseRewards(accountAddress, timestamp_);
+        uint256 stakingRewards = _calculatePendingStakingRewards(accountAddress, timestamp_);
 
         uint256 totalRewards = pendingBaseRewards + stakingRewards;
         if (totalRewards > 0) {
-            _mint(accountAddress, totalRewards);
+            uint256 remaining = maxTotalSupply > internalTotalSupply ? (maxTotalSupply - internalTotalSupply) : 0;
+            if (totalRewards > remaining) {
+                totalRewards = remaining;
+            }
+            if (totalRewards > 0) {
+                _mint(accountAddress, totalRewards);
+            }
         }
+
         account.periodStartTimestamp = timestamp_;
         account.accumulatedBalancePerTime = 0;
         account.lastUpdateTimestamp = timestamp_;
@@ -336,8 +361,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
             stakeInfo.lastStakeUpdateTimestamp = timestamp_;
         }
 
-        lastGlobalUpdateTimestamp = timestamp_;
         _latestClaimTimestamp[accountAddress] = timestamp_;
+        lastGlobalUpdateTimestamp = timestamp_;
     }
 
     /**
@@ -349,31 +374,70 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
         uint32 latestClaim = _latestClaimTimestamp[account_];
         if (timestamp - latestClaim < rewardCooldownPeriod) {
-            AccountBalance memory account = _balances[account_];
-            uint32 elapsed = timestamp - account.lastUpdateTimestamp;
-            if (elapsed > 0 && account.value > 0) {
-                account.accumulatedBalancePerTime += account.value * elapsed;
+            AccountBalance storage acc = _balances[account_];
+            if (acc.lastUpdateTimestamp == 0) {
+                acc.lastUpdateTimestamp = timestamp;
+                acc.periodStartTimestamp = timestamp;
+                emit StartedEarningRewards(account_);
+                return;
             }
-            account.lastUpdateTimestamp = timestamp;
 
-            for (uint256 i = 0; i < pools.length; i++) {
-                UserStake storage stakeInfo = stakes[i][account_];
-                if (stakeInfo.lpBalanceStaked == 0 || stakeInfo.lastStakeUpdateTimestamp == 0) continue;
-
-                uint32 lpElapsed = uint32(block.timestamp) - stakeInfo.lastStakeUpdateTimestamp;
-                if (lpElapsed > 0 && stakeInfo.lpBalanceStaked > 0) {
-                    stakeInfo.accumulatedLpBalancePerTime += stakeInfo.lpBalanceStaked * lpElapsed;
-                    stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
-                }
+            uint32 elapsed = timestamp - acc.lastUpdateTimestamp;
+            if (elapsed > 0 && acc.value > 0) {
+                acc.accumulatedBalancePerTime += acc.value * elapsed;
             }
+            acc.lastUpdateTimestamp = timestamp;
+
+            _accumulateStakingTime(account_);
+            return;
         }
 
-        _latestClaimTimestamp[account_] = timestamp;
-        _updateRewardsWithoutCooldown(account_, timestamp);
+\        _updateRewardsWithoutCooldown(account_, timestamp);
     }
 
-    /**
-     */
+
+    function _updateStakingAccumulation(uint256 poolId_, address account_) internal {
+        UserStake storage stakeInfo = stakes[poolId_][account_];
+        if (stakeInfo.lastStakeUpdateTimestamp == 0) {
+            stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
+            if (stakeInfo.periodStartTimestamp == 0) {
+                stakeInfo.periodStartTimestamp = uint32(block.timestamp);
+            }
+            return;
+        }
+
+        uint32 elapsed = uint32(block.timestamp) - stakeInfo.lastStakeUpdateTimestamp;
+        if (elapsed > 0 && stakeInfo.lpBalanceStaked > 0) {
+            stakeInfo.accumulatedLpBalancePerTime += stakeInfo.lpBalanceStaked * elapsed;
+        }
+    }
+
+    function _accumulateStakingTime(address account_) internal {
+        for (uint256 i = 0; i < pools.length; i++) {
+            UserStake storage stakeInfo = stakes[i][account_];
+            if (stakeInfo.lpBalanceStaked == 0 || stakeInfo.lastStakeUpdateTimestamp == 0) continue;
+
+            uint32 elapsed = uint32(block.timestamp) - stakeInfo.lastStakeUpdateTimestamp;
+            if (elapsed > 0 && stakeInfo.lpBalanceStaked > 0) {
+                stakeInfo.accumulatedLpBalancePerTime += stakeInfo.lpBalanceStaked * elapsed;
+                stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
+            }
+        }
+    }
+
+    function _resetStakingPeriods(address account_, uint32 timestamp_) internal {
+        for (uint256 i = 0; i < pools.length; i++) {
+            UserStake storage stakeInfo = stakes[i][account_];
+            if (stakeInfo.lpBalanceStaked == 0) {
+                // Si no hay stake, no hay nada que resetear
+                continue;
+            }
+            stakeInfo.periodStartTimestamp = timestamp_;
+            stakeInfo.accumulatedLpBalancePerTime = 0;
+            stakeInfo.lastStakeUpdateTimestamp = timestamp_;
+        }
+    }
+
     function _calculatePendingBaseRewards(address account_, uint32 currentTimestamp_) internal view returns (uint256) {
         AccountBalance memory account = _balances[account_];
 
@@ -403,7 +467,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return _calculateRewards(avgBalance, totalElapsed);
     }
 
-    // TODO: DOC
     function _calculatePendingStakingRewards(
         address account_,
         uint32 currentTimestamp_
@@ -415,7 +478,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return totalStakingRewards;
     }
 
-    // TODO: DOC
     function _calculatePoolPendingStakingRewards(
         uint256 poolId,
         address account_,
@@ -493,7 +555,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     /**
-     *TODO
+     * @notice Calculates the total current accrued staking rewards for the entire supply since the last update.
+     * @return The amount of staking rewards accrued since the last update.
      */
     function _calculateGlobalStakingRewards() internal view returns (uint224) {
         uint256 totalStakingRewards = 0;
@@ -511,7 +574,10 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     /**
-     *
+     * @notice Generalized function to calculate rewards based on an amount and a timestamp.
+     * @param amount_ The amount of tokens to calculate rewards for.
+     * @param elapsed_ The time elapsed in seconds.
+     * @return The amount of rewards accrued.
      */
     function _calculateRewards(uint224 amount_, uint256 elapsed_) internal view returns (uint224) {
         if (internalTotalSupply == maxTotalSupply) return 0;
@@ -519,30 +585,19 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return toSafeUint224((amount_ * elapsed_ * yearlyRate) / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR)));
     }
 
-    /**
-     * @dev Reverts if the balance is insufficient.
-     * @param caller_ Caller
-     * @param amount_ AccountBalance to check.
-     */
+    /* ============ Helper Functions ============ */
+
     function _revertIfInsufficientBalance(address caller_, uint256 amount_) internal view {
         uint224 balance = _balances[caller_].value;
-        if (balance < amount_) revert InsufficientBalance(amount_);
+        if (balance < amount_) revert InsufficientBalance();
     }
 
-    /**
-     * @dev Reverts if the amount of a `mint` or `burn` is equal to 0.
-     * @param amount_ Amount to check.
-     */
     function _revertIfInsufficientAmount(uint256 amount_) internal pure {
-        if (amount_ == 0) revert InsufficientAmount(amount_);
+        if (amount_ == 0) revert InsufficientAmount();
     }
 
-    /**
-     * @dev Reverts if the recipient of a `mint` or `transfer` is address(0).
-     * @param recipient_ Address of the recipient to check.
-     */
     function _revertIfInvalidRecipient(address recipient_) internal pure {
-        if (recipient_ == address(0)) revert InvalidRecipient(recipient_);
+        if (recipient_ == address(0)) revert InvalidRecipient();
     }
 
     /**
