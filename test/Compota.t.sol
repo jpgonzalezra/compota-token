@@ -7,7 +7,7 @@ import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
 import { ICompota } from "../src/interfaces/ICompota.sol";
 import { ERC20 } from "solmate/tokens/ERC20.sol";
 import { IUniswapV2Pair } from "../src/interfaces/IUniswapV2Pair.sol";
-import "forge-std/console.sol";
+// import "forge-std/console.sol";
 
 contract CompotaTest is Test {
     Compota token;
@@ -17,6 +17,7 @@ contract CompotaTest is Test {
     MockLPToken lpToken1;
     MockLPToken lpToken2;
 
+    uint256 constant LP_AMOUNT = 500 * 10e6;
     uint256 constant SCALE_FACTOR = 10_000;
     uint256 constant INITIAL_SUPPLY = 1000 * 10e6;
     uint256 constant BURN_AMOUNT = 400 * 10e6;
@@ -617,71 +618,134 @@ contract CompotaTest is Test {
         token.unstakeLiquidity(0, 100e6);
     }
 
-    // function testRewardsCalculation() external {
-    //     // Add LP pool to Compota
-    //     vm.startPrank(owner);
-    //     token.addStakingPool(address(lpToken1), MULTIPLIER_MAX, TIME_THRESHOLD);
+    function testCalculateGlobalStakingRewards() public {
+        vm.prank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
 
-    //     // Mint and transfer tokens for testing
-    //     WETH weth = new WETH();
-    //     token.mint(alice, 10_000e6); // Alice starts with 10,000 COMPOTA tokens
-    //     weth.mint(alice, 10e18); // Alice has 10 WETH
-    //     lpToken1.mint(alice, 100e18); // Mint LP tokens for Alice
+        lpToken1.mint(alice, 1000e6);
+        lpToken1.mint(bob, 1000e6);
 
-    //     // Set reserves for the mock LP token
-    //     lpToken1.setReserves(1000e6, 1 ether); // 1000 COMPOTA, 1 ETH
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), 1000e6);
+        token.stakeLiquidity(0, 500e6);
 
-    //     vm.stopPrank();
+        vm.startPrank(bob);
+        lpToken1.approve(address(token), 1000e6);
+        token.stakeLiquidity(0, 500e6);
 
-    //     // Approve tokens for the LP pool
-    //     vm.startPrank(alice);
-    //     token.approve(address(lpToken1), type(uint256).max);
-    //     weth.approve(address(lpToken1), type(uint256).max);
+        vm.warp(block.timestamp + 180 days);
 
-    //     // Approve LP tokens for Compota
-    //     lpToken1.approve(address(token), type(uint256).max);
+        lpToken1.setReserves(1000e6, 1 ether);
+        uint256 globalStakingRewards = token.totalSupply();
 
-    //     // Alice stakes 10 LP tokens in the Compota contract
-    //     uint256 lpAmount = 10e18; // 10 LP tokens
-    //     token.stakeLiquidity(0, lpAmount); // Stake in poolId = 0
+        assertEq(globalStakingRewards, 27614760, "Global staking rewards should be the same");
+    }
 
-    //     // Fast forward 10 days
-    //     vm.warp(block.timestamp + 10 days);
+    function testBalanceOfWithBaseRewards() public {
+        // Mint tokens to Alice
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), MULTIPLIER_MAX, TIME_THRESHOLD);
+        token.mint(alice, INITIAL_SUPPLY);
 
-    //     // Calculate expected base rewards
-    //     uint256 timeElapsed = 10 days;
-    //     uint256 baseRewards = (10_000e6 * SCALE_FACTOR * timeElapsed) / (10_000 * 31_536_000);
+        // Warp time to simulate interest accrual
+        vm.warp(block.timestamp + 180 days);
 
-    //     // Calculate expected staking rewards
-    //     uint256 timeStaked = timeElapsed;
-    //     uint256 cubicMultiplier = 1e6 + (((MULTIPLIER_MAX - 1e6) * (timeStaked ** 3)) / (uint256(TIME_THRESHOLD) ** 3));
-    //     uint256 lpTotalSupply = lpToken1.totalSupply();
-    //     uint112 reserveCompota = lpToken1.reserve0(); // Assuming token0 is COMPOTA
-    //     uint256 compotaShare = (lpAmount * reserveCompota) / lpTotalSupply;
-    //     uint256 stakingRewards = (compotaShare * SCALE_FACTOR * timeElapsed * cubicMultiplier) /
-    //         (1e6 * 31_536_000 * 10_000);
+        uint256 expectedRewards = (INITIAL_SUPPLY * INTEREST_RATE * 180 days) / (10_000 * 365 days);
+        uint256 expectedBalance = INITIAL_SUPPLY + expectedRewards;
 
-    //     // Claim rewards and verify balances
+        // Verify balance includes base rewards
+        assertEq(token.balanceOf(alice), expectedBalance, "Balance with base rewards mismatch");
+    }
 
-    //     uint256 totalExpectedRewards = baseRewards + stakingRewards;
-    //     uint256 aliceBalance = token.balanceOf(alice);
+    function testBalanceOfWithStakingRewards() public {
+        // Mint LP tokens to Alice
+        vm.startPrank(owner);
+        lpToken1.mint(alice, LP_AMOUNT);
+        token.addStakingPool(address(lpToken1), MULTIPLIER_MAX, TIME_THRESHOLD);
 
-    //     console.log(baseRewards);
-    //     console.log(stakingRewards);
-    //     console.log(totalExpectedRewards);
+        // Alice stakes LP tokens
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), LP_AMOUNT);
+        token.stakeLiquidity(0, LP_AMOUNT);
+        vm.stopPrank();
 
-    //     token.claimRewards();
-    //     vm.stopPrank();
+        // Warp time to simulate staking rewards accrual
+        vm.warp(block.timestamp + 180 days);
 
-    //     // Verify base rewards
-    //     assertApproxEqAbs(baseRewards, baseRewards, 1, "Base rewards mismatch");
+        // Set reserves for LP token
+        lpToken1.setReserves(1_000_000e6, 10_000 ether);
 
-    //     // Verify staking rewards
-    //     assertApproxEqAbs(stakingRewards, stakingRewards, 1, "Staking rewards mismatch");
+        // Debug staking rewards calculation
+        //console.log("Staking Rewards Calculation:");
+        uint256 lpTotalSupply = lpToken1.totalSupply();
+        //console.log("LP Token Total Supply:", lpTotalSupply);
 
-    //     // Verify total rewards
-    //     assertApproxEqAbs(aliceBalance, 10_000e6 + totalExpectedRewards, 1, "Total rewards mismatch");
-    // }
+        uint256 reserve0 = 1_000_000e6; // Token reserve
+        //console.log("Reserve0:", reserve0);
+
+        uint256 timeElapsed = 180 days;
+        //console.log("Time Elapsed:", timeElapsed);
+
+        // Calculate average staked balance
+        uint256 accumulatedLpBalance = LP_AMOUNT * timeElapsed;
+        uint256 avgLpStaked = accumulatedLpBalance / timeElapsed;
+        //console.log("Average LP Staked:", avgLpStaked);
+
+        // Calculate cubic multiplier
+        uint256 ratio = (timeElapsed * 1e6) / TIME_THRESHOLD;
+        uint256 ratioCubed = (ratio * ratio * ratio) / (1e6 * 1e6);
+        uint256 cubicMultiplier = 1e6 + ((MULTIPLIER_MAX - 1e6) * ratioCubed) / 1e6;
+        //console.log("Cubic Multiplier:", cubicMultiplier);
+
+        // Calculate staking rewards
+        uint256 stakingRewards = (avgLpStaked * reserve0 * INTEREST_RATE * timeElapsed * cubicMultiplier) /
+            (lpTotalSupply * 10_000 * 365 days * 1e6);
+        //console.log("Expected Staking Rewards:", stakingRewards);
+
+        // Verify balance includes staking rewards
+        uint256 actualBalance = token.balanceOf(alice);
+        //console.log("Actual Balance:", actualBalance);
+        assertEq(actualBalance, stakingRewards, "Balance with staking rewards mismatch");
+    }
+
+    function testBalanceOfWithBaseAndStakingRewards() public {
+        // Mint tokens and LP tokens to Alice
+        vm.startPrank(owner);
+        token.mint(alice, INITIAL_SUPPLY);
+        token.addStakingPool(address(lpToken1), MULTIPLIER_MAX, TIME_THRESHOLD);
+        lpToken1.mint(alice, LP_AMOUNT);
+
+        // Alice stakes LP tokens
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), LP_AMOUNT);
+        token.stakeLiquidity(0, LP_AMOUNT);
+        vm.stopPrank();
+
+        // Warp time to simulate rewards accrual
+        vm.warp(block.timestamp + 180 days);
+
+        // Set reserves for LP token
+        lpToken1.setReserves(1_000_000e6, 10_000 ether);
+
+        // Calculate expected base rewards
+        uint256 baseRewards = (INITIAL_SUPPLY * INTEREST_RATE * 180 days) / (10_000 * 365 days);
+
+        // Calculate expected staking rewards
+        uint256 lpTotalSupply = lpToken1.totalSupply();
+        uint256 reserve0 = 1_000_000e6; // Token reserve
+        uint256 accumulatedLpBalance = LP_AMOUNT * 180 days;
+        uint256 avgLpStaked = accumulatedLpBalance / 180 days;
+        uint256 ratio = (180 days * 1e6) / TIME_THRESHOLD;
+        uint256 ratioCubed = (ratio * ratio * ratio) / (1e6 * 1e6);
+        uint256 cubicMultiplier = 1e6 + ((MULTIPLIER_MAX - 1e6) * ratioCubed) / 1e6;
+        uint256 stakingRewards = (avgLpStaked * reserve0 * INTEREST_RATE * 180 days * cubicMultiplier) /
+            (lpTotalSupply * 10_000 * 365 days * 1e6);
+
+        uint256 expectedTotalBalance = INITIAL_SUPPLY + baseRewards + stakingRewards;
+
+        // Verify total balance includes both base and staking rewards
+        assertEq(token.balanceOf(alice), expectedTotalBalance, "Total balance mismatch");
+    }
 
     /* ============ Helper functions ============ */
 
@@ -733,7 +797,7 @@ contract MockLPToken is ERC20("Mock LP", "MLP", 18) {
         _mint(to, amount);
     }
 
-    function getReserves() external view returns (uint112, uint112) {
-        return (reserve0, reserve1);
+    function getReserves() external view returns (uint112, uint112, uint32) {
+        return (reserve0, reserve1, 0);
     }
 }

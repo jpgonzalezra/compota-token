@@ -122,4 +122,23 @@ contract FuzzTests is Test {
             assertEq(token.yearlyRate(), newRate);
         }
     }
+
+    function testFuzzCalculateBaseRewards(address account, uint256 mintAmount, uint32 warpTime) public {
+        vm.assume(account != address(0));
+        vm.assume(mintAmount > 0 && mintAmount < MAX_SUPPLY);
+        vm.assume(warpTime > block.timestamp);
+
+        vm.prank(owner);
+        token.mint(account, mintAmount);
+        uint32 initialTimestamp = uint32(block.timestamp);
+
+        vm.warp(warpTime);
+
+        uint256 calculatedBaseRewards = token.calculateBaseRewards(account, uint32(block.timestamp));
+
+        uint256 elapsedTime = uint32(block.timestamp) - initialTimestamp;
+        uint256 expectedBaseRewards = (mintAmount * INTEREST_RATE * elapsedTime) / (10_000 * 365 days);
+
+        assertEq(calculatedBaseRewards, expectedBaseRewards, "Base rewards calculation mismatch");
+    }
 }
