@@ -7,6 +7,7 @@ import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
 import { ICompota } from "../src/interfaces/ICompota.sol";
 import { ERC20 } from "solmate/tokens/ERC20.sol";
 import { IUniswapV2Pair } from "../src/interfaces/IUniswapV2Pair.sol";
+
 // import "forge-std/console.sol";
 
 contract CompotaTest is Test {
@@ -29,7 +30,7 @@ contract CompotaTest is Test {
 
     function setUp() external {
         vm.prank(owner);
-        token = new Compota(INTEREST_RATE, 1 days, 1_000_000_000e6);
+        token = new Compota("Compota Token", "COMPOTA", INTEREST_RATE, 1 days, 1_000_000_000e6);
         lpToken1 = new MockLPToken(
             address(token),
             address(0) // ETH as token1
@@ -233,16 +234,16 @@ contract CompotaTest is Test {
     }
 
     function testConstructorInitializesYearlyRate() public {
-        Compota newToken = new Compota(500, 1 days, 1_000_000_000e6);
+        Compota newToken = new Compota("Compota Token", "COMPOTA", 500, 1 days, 1_000_000_000e6);
         assertEq(newToken.yearlyRate(), 500);
     }
 
     function testConstructorRevertsOnInvalidYearlyRate() public {
         vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidYearlyRate.selector, 0));
-        new Compota(0, 1 days, 1_000_000_000e6);
+        new Compota("Compota Token", "COMPOTA", 0, 1 days, 1_000_000_000e6);
 
         vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidYearlyRate.selector, 50000));
-        new Compota(50000, 1 days, 1_000_000_000e6);
+        new Compota("Compota Token", "COMPOTA", 50000, 1 days, 1_000_000_000e6);
     }
 
     function testInterestAccumulationAfterTransfer() external {
@@ -405,7 +406,7 @@ contract CompotaTest is Test {
     function testMintCannotExceedMaxTotalSupply() public {
         uint224 maxSupply = 1_000_000 * 10e6;
         vm.prank(owner);
-        token = new Compota(INTEREST_RATE, 1 days, maxSupply);
+        token = new Compota("Compota Token", "COMPOTA", INTEREST_RATE, 1 days, maxSupply);
 
         uint256 mintable = 900_000 * 10e6;
         _mint(owner, alice, mintable);
@@ -423,7 +424,7 @@ contract CompotaTest is Test {
     function testMintPartialWhenNearMaxTotalSupply() public {
         uint224 maxSupply = 1_000_000 * 10e6;
         vm.prank(owner);
-        token = new Compota(INTEREST_RATE, 1 days, maxSupply);
+        token = new Compota("Compota Token", "COMPOTA", INTEREST_RATE, 1 days, maxSupply);
 
         uint256 mintable = 999_999 * 10e6;
         _mint(owner, alice, mintable);
@@ -440,7 +441,7 @@ contract CompotaTest is Test {
     function testInterestAccrualRespectsMaxTotalSupply() external {
         uint224 maxSupply = 600 * 10e6;
         vm.prank(owner);
-        token = new Compota(INTEREST_RATE, 1 days, maxSupply);
+        token = new Compota("Compota Token", "COMPOTA", INTEREST_RATE, 1 days, maxSupply);
 
         uint256 initialMint = 300 * 10e6;
         _mint(owner, alice, initialMint);

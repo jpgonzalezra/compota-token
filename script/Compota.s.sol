@@ -26,7 +26,7 @@ contract CompotaTokenScript is Script {
 
     function run() public {
         vm.startBroadcast(broadcaster);
-        token = new Compota(YEARLY_RATE_DEFAULT, 1 days, 1_000_000_000e6);
+        token = new Compota("Compota Token", "COMPOTA", YEARLY_RATE_DEFAULT, 1 days, 1_000_000_000e6);
         vm.stopBroadcast();
     }
 }

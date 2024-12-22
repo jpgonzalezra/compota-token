@@ -5,6 +5,7 @@ import { Test } from "forge-std/Test.sol";
 import { Compota } from "../../src/Compota.sol";
 import { ICompota } from "../../src/interfaces/ICompota.sol";
 import { MockLPToken } from "../Compota.t.sol";
+
 // import { console } from "forge-std/console.sol";
 
 contract FuzzTests is Test {
@@ -21,7 +22,7 @@ contract FuzzTests is Test {
 
     function setUp() public {
         vm.startPrank(owner);
-        token = new Compota(INTEREST_RATE, 1 days, 1_000_000_000e6);
+        token = new Compota("Compota Token", "COMPOTA", INTEREST_RATE, 1 days, 1_000_000_000e6);
         lpToken = new MockLPToken(address(token), address(0));
 
         vm.stopPrank();
