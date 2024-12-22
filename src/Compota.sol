@@ -499,7 +499,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
         if (totalElapsed == 0 || tempAccumulated == 0) return 0;
 
         uint224 avgLpStaked = tempAccumulated / totalElapsed;
-
         uint256 timeStaked = stakeInfo.lpStakeStartTimestamp > 0
             ? (currentTimestamp_ - stakeInfo.lpStakeStartTimestamp)
             : 0;
@@ -529,7 +528,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         uint256 multiplierMax,
         uint256 timeThreshold,
         uint256 timeStaked
-    ) external pure returns (uint256) {
+    ) public pure returns (uint256) {
         if (timeStaked >= timeThreshold) {
             return multiplierMax;
         }
@@ -581,7 +580,13 @@ contract Compota is ICompota, ERC20Extended, Owned {
     function _calculateRewards(uint224 amount_, uint256 elapsed_) internal view returns (uint224) {
         if (internalTotalSupply == maxTotalSupply) return 0;
         if (elapsed_ == 0) return 0;
-        return toSafeUint224((amount_ * elapsed_ * yearlyRate) / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR)));
+
+        uint256 mul;
+        unchecked {
+            mul = amount_ * elapsed_ * yearlyRate;
+        }
+
+        return toSafeUint224(mul / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR)));
     }
 
     /* ============ Helper Functions ============ */
