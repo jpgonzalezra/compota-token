@@ -3,7 +3,7 @@ gas_reports = ["Compota"]
 gas_reports_ignore = []
 ignored_error_codes = []
 optimizer = true
-solc_version = "0.8.23"
+solc_version = "0.8.28"
 verbosity = 3
 
 [profile.production]

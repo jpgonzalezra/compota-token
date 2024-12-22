@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity 0.8.23;
+pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 import { Compota } from "../../src/Compota.sol";
 import { ICompota } from "../../src/interfaces/ICompota.sol";
 import { MockLPToken } from "../Compota.t.sol";
-
-// import { console } from "forge-std/console.sol";
 
 contract FuzzTests is Test {
     Compota token;

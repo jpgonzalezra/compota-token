@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity 0.8.23;
+pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 import { Compota } from "../src/Compota.sol";
@@ -7,8 +7,6 @@ import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
 import { ICompota } from "../src/interfaces/ICompota.sol";
 import { ERC20 } from "solmate/tokens/ERC20.sol";
 import { IUniswapV2Pair } from "../src/interfaces/IUniswapV2Pair.sol";
-
-// import "forge-std/console.sol";
 
 contract CompotaTest is Test {
     Compota token;
@@ -532,6 +530,26 @@ contract CompotaTest is Test {
         assertEq(staked1, 500e6, "Staked in pool 1 should match");
     }
 
+    function testStakeWithInvalidPoolId() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        token.addStakingPool(address(lpToken2), 3e6, 180 days);
+        vm.stopPrank();
+
+        lpToken1.mint(alice, 1000e6);
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), 1000e6);
+        token.stakeLiquidity(0, 300e6);
+        vm.stopPrank();
+
+        lpToken2.mint(alice, 2000e6);
+        vm.startPrank(alice);
+        lpToken2.approve(address(token), 2000e6);
+        vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidPoolId.selector));
+        token.stakeLiquidity(2, 500e6);
+        vm.stopPrank();
+    }
+
     function testUnstakePartially() external {
         vm.startPrank(owner);
         token.addStakingPool(address(lpToken1), 1e6, 365 days);
@@ -549,6 +567,24 @@ contract CompotaTest is Test {
         token.unstakeLiquidity(0, 200e6);
 
         assertEq(lpToken1.balanceOf(alice), 1000e6 - 300e6 + 200e6, "Alice should get back some LP");
+    }
+
+    function testUnstakeInvalidPoolId() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 1e6, 365 days);
+
+        lpToken1.mint(alice, 1000e6);
+        vm.stopPrank();
+
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), 1000e6);
+        token.stakeLiquidity(0, 300e6);
+
+        (, uint224 staked, , , ) = token.stakes(0, alice);
+        assertEq(staked, 300e6, "Should have 300e6 left staked");
+
+        vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidPoolId.selector));
+        token.unstakeLiquidity(1, 200e6);
     }
 
     function testUnstakeAll() external {
@@ -599,7 +635,7 @@ contract CompotaTest is Test {
         lpToken1.approve(address(token), 1000e6);
         token.stakeLiquidity(0, 300e6);
 
-        vm.expectRevert("amount=0");
+        vm.expectRevert(abi.encodeWithSelector(IERC20Extended.InsufficientAmount.selector, INSUFFICIENT_AMOUNT));
         token.unstakeLiquidity(0, 0);
     }
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity 0.8.23;
+pragma solidity 0.8.28;
 
 // import { console } from "forge-std/console.sol";
 import { Owned } from "solmate/auth/Owned.sol";
@@ -125,8 +125,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     function stakeLiquidity(uint256 poolId_, uint256 amount_) external {
-        require(poolId_ < pools.length, "Invalid poolId");
-        require(amount_ > 0, "amount=0");
+        if (poolId_ >= pools.length) revert InvalidPoolId();
+        if (amount_ == 0) revert InsufficientAmount(amount_);
         address caller = msg.sender;
 
         _updateRewards(caller);
@@ -158,8 +158,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     function unstakeLiquidity(uint256 poolId_, uint256 amount_) external {
-        require(poolId_ < pools.length, "Invalid poolId");
-        require(amount_ > 0, "amount=0");
+        if (poolId_ >= pools.length) revert InvalidPoolId();
+        if (amount_ == 0) revert InsufficientAmount(amount_);
 
         address caller = msg.sender;
         _updateRewards(caller);

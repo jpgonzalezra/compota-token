@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity 0.8.23;
+pragma solidity 0.8.28;
 
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
@@ -34,6 +34,8 @@ interface ICompota is IERC20Extended {
      */
     event MinterTransferred(address indexed oldMinter, address indexed newMinter);
     /* ============ Custom Errors ============ */
+
+    error InvalidPoolId();
 
     /// @notice Error thrown when the yearly rate is invalid.
     error InvalidYearlyRate(uint16 rate);
