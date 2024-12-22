@@ -119,8 +119,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
     // TODO: DOC
     function addStakingPool(address lpToken_, uint32 multiplierMax_, uint32 timeThreshold_) external onlyOwner {
-        require(multiplierMax_ >= 1e6, "multiplierMax < 1");
-        require(timeThreshold_ > 0, "timeThreshold = 0");
+        if (multiplierMax_ < 1e6) revert InvalidMultiplierMax();
+        if (timeThreshold_ == 0) revert InvalidTimeThreshold();
         pools.push(StakingPool({ lpToken: lpToken_, multiplierMax: multiplierMax_, timeThreshold: timeThreshold_ }));
     }
 
@@ -166,7 +166,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
         UserStake storage stakeInfo = stakes[poolId_][caller];
         uint224 staked = stakeInfo.lpBalanceStaked;
-        require(staked >= amount_, "Not enough staked");
+        require(staked >= amount_, "Not enough staked"); // TODO
 
         // Update staking accumulation before modifying the balance
         _updateStakingAccumulation(poolId_, caller);

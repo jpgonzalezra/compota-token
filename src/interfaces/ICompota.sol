@@ -55,6 +55,10 @@ interface ICompota is IERC20Extended {
     /// @notice Emitted when a function is called by an address that is not authorized to perform the action.
     error Unauthorized();
 
+    error InvalidMultiplierMax();
+
+    error InvalidTimeThreshold();
+
     /* ============ Interactive Functions ============ */
 
     /**

@@ -199,4 +199,18 @@ contract FuzzTests is Test {
             "Staking rewards calculation mismatch"
         );
     }
+
+    function testFuzzAddStakingPool(address lpTokenAddress, uint32 multiplierMax, uint32 timeThreshold) public {
+        vm.assume(lpTokenAddress != address(0));
+        vm.assume(multiplierMax >= 1e6);
+        vm.assume(timeThreshold > 0);
+
+        vm.prank(owner);
+        token.addStakingPool(lpTokenAddress, multiplierMax, timeThreshold);
+
+        (address poolLpToken, uint32 poolMultiplierMax, uint32 poolTimeThreshold) = token.pools(0);
+        assertEq(poolLpToken, lpTokenAddress, "LP token address mismatch");
+        assertEq(poolMultiplierMax, multiplierMax, "Multiplier max mismatch");
+        assertEq(poolTimeThreshold, timeThreshold, "Time threshold mismatch");
+    }
 }

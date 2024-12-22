@@ -655,6 +655,18 @@ contract CompotaTest is Test {
         token.unstakeLiquidity(0, 100e6);
     }
 
+    function testAddStakingPoolInvalidMultiplierMax() public {
+        vm.prank(owner);
+        vm.expectRevert(ICompota.InvalidMultiplierMax.selector);
+        token.addStakingPool(address(lpToken1), 1e5, 365 days);
+    }
+
+    function testAddStakingPoolInvalidTimeThreshold() public {
+        vm.prank(owner);
+        vm.expectRevert(ICompota.InvalidTimeThreshold.selector);
+        token.addStakingPool(address(lpToken1), 2e6, 0);
+    }
+
     function testCalculateGlobalStakingRewards() public {
         vm.prank(owner);
         token.addStakingPool(address(lpToken1), 2e6, 365 days);
