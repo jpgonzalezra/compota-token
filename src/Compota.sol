@@ -40,7 +40,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
     StakingPool[] public pools;
 
     address[] public activeStakers;
-    mapping(address => bool) private isActiveStaker;
 
     // stakes[poolId][user]
     mapping(uint256 => mapping(address => UserStake)) public stakes;
@@ -71,6 +70,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
     mapping(address => AccountBalance) internal _balances;
     mapping(address => uint32) internal _latestClaimTimestamp;
+    mapping(address => uint256) internal _activeStakerIndices;
 
     /* ============ Constructor ============ */
 
@@ -136,9 +136,9 @@ contract Compota is ICompota, ERC20Extended, Owned {
         if (stakeInfo.lpBalanceStaked == 0) {
             stakeInfo.lpStakeStartTimestamp = timestamp;
 
-            if (!isActiveStaker[caller]) {
+            if (_activeStakerIndices[caller] == 0) {
+                _activeStakerIndices[caller] = activeStakers.length + 1;
                 activeStakers.push(caller);
-                isActiveStaker[caller] = true;
             }
 
             // Initialize staking period if not set
@@ -252,15 +252,19 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
     // TODO: doc
     function _removeActiveStaker(address staker) internal {
-        uint256 length = activeStakers.length;
-        for (uint256 i = 0; i < length; i++) {
-            if (activeStakers[i] == staker) {
-                activeStakers[i] = activeStakers[length - 1];
-                activeStakers.pop();
-                isActiveStaker[staker] = false;
-                break;
-            }
-        }
+        uint256 indexPlusOne = _activeStakerIndices[staker];
+        require(indexPlusOne > 0, "Staker not active");
+
+        uint256 index = indexPlusOne - 1;
+        uint256 lastIndex = activeStakers.length - 1;
+        address lastStaker = activeStakers[lastIndex];
+
+        activeStakers[index] = lastStaker;
+        _activeStakerIndices[lastStaker] = index + 1;
+
+        activeStakers.pop();
+
+        delete _activeStakerIndices[staker];
     }
 
     /**
