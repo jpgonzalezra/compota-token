@@ -276,12 +276,12 @@ contract Compota is ICompota, ERC20Extended, Owned {
         _updateRewards(sender_);
         _updateRewards(recipient_);
 
-        _balances[sender_].value -= toSafeUint224(amount_);
-
+        uint224 amount224 = toSafeUint224(amount_);
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint224 value.
         unchecked {
-            _balances[recipient_].value += toSafeUint224(amount_);
+            _balances[sender_].value -= amount224;
+            _balances[recipient_].value += amount224;
         }
 
         emit Transfer(sender_, recipient_, amount_);
@@ -301,12 +301,12 @@ contract Compota is ICompota, ERC20Extended, Owned {
             return;
         }
 
-        internalTotalSupply += toSafeUint224(amount_);
-
+        uint224 amount224 = toSafeUint224(amount_);
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint224 value.
         unchecked {
-            _balances[to_].value += toSafeUint224(amount_);
+            internalTotalSupply += amount224;
+            _balances[to_].value += amount224;
         }
 
         emit Transfer(address(0), to_, amount_);
@@ -318,12 +318,12 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @param amount_ The amount of tokens to burn.
      */
     function _burn(address from_, uint256 amount_) internal virtual {
-        _balances[from_].value -= toSafeUint224(amount_);
-
+        uint224 amount224 = toSafeUint224(amount_);
         // Cannot underflow because a user's balance
         // will never be larger than the total supply.
         unchecked {
-            internalTotalSupply -= toSafeUint224(amount_);
+            _balances[from_].value -= amount224;
+            internalTotalSupply -= amount224;
         }
         emit Transfer(from_, address(0), amount_);
     }
@@ -557,12 +557,14 @@ contract Compota is ICompota, ERC20Extended, Owned {
      */
     function _calculateGlobalStakingRewards() internal view returns (uint224) {
         uint256 totalStakingRewards = 0;
-
         uint32 timestamp = uint32(block.timestamp);
-        for (uint256 i = 0; i < activeStakers.length; i++) {
+        uint256 activeStakersLength = activeStakers.length;
+        uint256 poolsLength = pools.length;
+
+        for (uint256 i = 0; i < activeStakersLength; i++) {
             address staker = activeStakers[i];
 
-            for (uint256 poolId = 0; poolId < pools.length; poolId++) {
+            for (uint256 poolId = 0; poolId < poolsLength; poolId++) {
                 totalStakingRewards += _calculatePoolPendingStakingRewards(poolId, staker, timestamp);
             }
         }
