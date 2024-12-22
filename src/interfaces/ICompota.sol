@@ -59,6 +59,10 @@ interface ICompota is IERC20Extended {
 
     error InvalidTimeThreshold();
 
+    error NotStaker();
+
+    error NotEnoughStaked();
+
     /* ============ Interactive Functions ============ */
 
     /**

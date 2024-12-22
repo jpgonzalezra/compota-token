@@ -620,7 +620,7 @@ contract CompotaTest is Test {
         (, uint224 staked, , , ) = token.stakes(0, alice);
         assertEq(staked, 300e6, "Should have 300e6 left staked");
 
-        vm.expectRevert("Not enough staked");
+        vm.expectRevert(ICompota.NotEnoughStaked.selector);
         token.unstakeLiquidity(0, 400e6);
     }
 
@@ -651,7 +651,8 @@ contract CompotaTest is Test {
         token.stakeLiquidity(0, 300e6);
 
         vm.startPrank(bob);
-        vm.expectRevert("Not enough staked");
+        vm.expectRevert(ICompota.NotEnoughStaked.selector);
+
         token.unstakeLiquidity(0, 100e6);
     }
 
@@ -665,6 +666,13 @@ contract CompotaTest is Test {
         vm.prank(owner);
         vm.expectRevert(ICompota.InvalidTimeThreshold.selector);
         token.addStakingPool(address(lpToken1), 2e6, 0);
+    }
+
+    function testUnstakeLiquidityNotEnoughStaked() public {
+        vm.prank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        vm.expectRevert(ICompota.NotEnoughStaked.selector);
+        token.unstakeLiquidity(0, 100);
     }
 
     function testCalculateGlobalStakingRewards() public {

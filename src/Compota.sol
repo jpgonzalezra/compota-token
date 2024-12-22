@@ -166,7 +166,9 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
         UserStake storage stakeInfo = stakes[poolId_][caller];
         uint224 staked = stakeInfo.lpBalanceStaked;
-        require(staked >= amount_, "Not enough staked"); // TODO
+        if (staked < amount_) {
+            revert NotEnoughStaked();
+        }
 
         // Update staking accumulation before modifying the balance
         _updateStakingAccumulation(poolId_, caller);
@@ -255,7 +257,9 @@ contract Compota is ICompota, ERC20Extended, Owned {
     // TODO: doc
     function _removeActiveStaker(address staker_) internal {
         uint256 indexPlusOne = _activeStakerIndices[staker_];
-        require(indexPlusOne > 0, "Staker not active");
+        if (indexPlusOne == 0) {
+            revert NotStaker();
+        }
 
         uint256 index = indexPlusOne - 1;
         uint256 lastIndex = activeStakers.length - 1;
