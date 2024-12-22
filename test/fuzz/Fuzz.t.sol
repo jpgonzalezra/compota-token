@@ -4,12 +4,16 @@ pragma solidity 0.8.23;
 import { Test } from "forge-std/Test.sol";
 import { Compota } from "../../src/Compota.sol";
 import { ICompota } from "../../src/interfaces/ICompota.sol";
+import { MockLPToken } from "../Compota.t.sol";
+// import { console } from "forge-std/console.sol";
 
 contract FuzzTests is Test {
     Compota token;
     address owner = address(this);
     address alice = address(0x2);
     address bob = address(0x3);
+
+    MockLPToken lpToken;
 
     uint16 constant INTEREST_RATE = 1000; // 10% APY
     uint256 constant INITIAL_MINT = 1000 * 10 ** 6;
@@ -18,6 +22,8 @@ contract FuzzTests is Test {
     function setUp() public {
         vm.startPrank(owner);
         token = new Compota(INTEREST_RATE, 1 days, 1_000_000_000e6);
+        lpToken = new MockLPToken(address(token), address(0));
+
         vm.stopPrank();
     }
 
@@ -140,5 +146,58 @@ contract FuzzTests is Test {
         uint256 expectedBaseRewards = (mintAmount * INTEREST_RATE * elapsedTime) / (10_000 * 365 days);
 
         assertEq(calculatedBaseRewards, expectedBaseRewards, "Base rewards calculation mismatch");
+    }
+
+    function testFuzzCalculateStakingRewards(
+        address account,
+        uint256 lpAmount,
+        uint32 warpTime,
+        uint112 reserve0,
+        uint112 reserve1
+    ) public {
+        vm.assume(account != address(0));
+        vm.assume(lpAmount >= 1e6 && lpAmount < MAX_SUPPLY);
+        vm.assume(warpTime > block.timestamp);
+        vm.assume(reserve0 > 0 && reserve1 > 0);
+
+        vm.prank(owner);
+        token.addStakingPool(address(lpToken), 2e6, 365 days);
+
+        vm.prank(owner);
+        lpToken.mint(account, lpAmount);
+        assertEq(lpToken.balanceOf(account), lpAmount);
+
+        lpToken.setReserves(reserve0, reserve1);
+
+        vm.prank(account);
+        lpToken.approve(address(token), lpAmount);
+        assertEq(lpToken.allowance(account, address(token)), lpAmount);
+
+        vm.prank(account);
+        token.stakeLiquidity(0, lpAmount);
+
+        uint32 initialTimestamp = uint32(block.timestamp);
+
+        vm.warp(warpTime);
+        uint32 timestampAfterWarpTime = uint32(block.timestamp);
+
+        uint256 calculatedStakingRewards = token.calculateStakingRewards(account, timestampAfterWarpTime);
+
+        uint256 elapsedTime = timestampAfterWarpTime - initialTimestamp;
+
+        uint256 lpTotalSupply = lpToken.totalSupply();
+        uint256 tokenQuantity = (lpAmount * reserve0) / lpTotalSupply;
+
+        uint256 cubicMultiplier = token.calculateCubicMultiplier(2e6, 365 days, elapsedTime);
+
+        uint256 expectedStakingRewards = (tokenQuantity * INTEREST_RATE * elapsedTime * cubicMultiplier) /
+            (10_000 * 365 days * 1e6);
+
+        assertApproxEqAbs(
+            calculatedStakingRewards,
+            expectedStakingRewards,
+            1e12,
+            "Staking rewards calculation mismatch"
+        );
     }
 }

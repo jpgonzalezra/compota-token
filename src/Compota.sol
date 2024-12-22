@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.23;
 
-import { console } from "forge-std/console.sol";
+// import { console } from "forge-std/console.sol";
 import { Owned } from "solmate/auth/Owned.sol";
 import { ERC20Extended } from "@mzero-labs/ERC20Extended.sol";
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
@@ -131,9 +131,10 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
         IERC20(pools[poolId_].lpToken).transferFrom(caller, address(this), amount_);
 
+        uint32 timestamp = uint32(block.timestamp);
         UserStake storage stakeInfo = stakes[poolId_][caller];
         if (stakeInfo.lpBalanceStaked == 0) {
-            stakeInfo.lpStakeStartTimestamp = uint32(block.timestamp);
+            stakeInfo.lpStakeStartTimestamp = timestamp;
 
             if (!isActiveStaker[caller]) {
                 activeStakers.push(caller);
@@ -142,8 +143,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
             // Initialize staking period if not set
             if (stakeInfo.periodStartTimestamp == 0) {
-                stakeInfo.periodStartTimestamp = uint32(block.timestamp);
-                stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
+                stakeInfo.periodStartTimestamp = timestamp;
+                stakeInfo.lastStakeUpdateTimestamp = timestamp;
             }
         }
 
@@ -151,7 +152,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         _updateStakingAccumulation(poolId_, caller);
 
         stakeInfo.lpBalanceStaked += toSafeUint224(amount_);
-        stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
+        stakeInfo.lastStakeUpdateTimestamp = timestamp;
     }
 
     function unstakeLiquidity(uint256 poolId, uint256 amount_) external {
@@ -393,16 +394,17 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     function _updateStakingAccumulation(uint256 poolId_, address account_) internal {
+        uint32 timestamp = uint32(block.timestamp);
         UserStake storage stakeInfo = stakes[poolId_][account_];
         if (stakeInfo.lastStakeUpdateTimestamp == 0) {
-            stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
+            stakeInfo.lastStakeUpdateTimestamp = timestamp;
             if (stakeInfo.periodStartTimestamp == 0) {
-                stakeInfo.periodStartTimestamp = uint32(block.timestamp);
+                stakeInfo.periodStartTimestamp = timestamp;
             }
             return;
         }
 
-        uint32 elapsed = uint32(block.timestamp) - stakeInfo.lastStakeUpdateTimestamp;
+        uint32 elapsed = timestamp - stakeInfo.lastStakeUpdateTimestamp;
         if (elapsed > 0 && stakeInfo.lpBalanceStaked > 0) {
             stakeInfo.accumulatedLpBalancePerTime += stakeInfo.lpBalanceStaked * elapsed;
         }
@@ -413,10 +415,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
             UserStake storage stakeInfo = stakes[i][account_];
             if (stakeInfo.lpBalanceStaked == 0 || stakeInfo.lastStakeUpdateTimestamp == 0) continue;
 
-            uint32 elapsed = uint32(block.timestamp) - stakeInfo.lastStakeUpdateTimestamp;
+            uint32 timestamp = uint32(block.timestamp);
+            uint32 elapsed = timestamp - stakeInfo.lastStakeUpdateTimestamp;
             if (elapsed > 0 && stakeInfo.lpBalanceStaked > 0) {
                 stakeInfo.accumulatedLpBalancePerTime += stakeInfo.lpBalanceStaked * elapsed;
-                stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
+                stakeInfo.lastStakeUpdateTimestamp = timestamp;
             }
         }
     }
@@ -436,7 +439,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
     function _calculatePendingBaseRewards(address account_, uint32 currentTimestamp_) internal view returns (uint256) {
         AccountBalance memory account = _balances[account_];
 
-        console.log("periodStartTimestamp", account.periodStartTimestamp);
         if (account.periodStartTimestamp == 0) {
             return 0;
         }
@@ -445,28 +447,20 @@ contract Compota is ICompota, ERC20Extended, Owned {
             ? currentTimestamp_ - account.lastUpdateTimestamp
             : 0;
 
-        console.log("elapsedSinceLastUpdate", elapsedSinceLastUpdate);
-
         uint224 tempAccumulatedBalancePerTime = account.accumulatedBalancePerTime;
         if (elapsedSinceLastUpdate > 0 && account.value > 0) {
             tempAccumulatedBalancePerTime += account.value * elapsedSinceLastUpdate;
         }
 
-        console.log("tempAccumulatedBalancePerTime", tempAccumulatedBalancePerTime);
-
         uint32 totalElapsed = currentTimestamp_ > account.periodStartTimestamp
             ? currentTimestamp_ - account.periodStartTimestamp
             : 0;
-
-        console.log("totalElapsed", totalElapsed);
 
         if (totalElapsed == 0 || tempAccumulatedBalancePerTime == 0) {
             return 0;
         }
 
         uint224 avgBalance = tempAccumulatedBalancePerTime / totalElapsed;
-        console.log("avgBalance", avgBalance);
-
         return _calculateRewards(avgBalance, totalElapsed);
     }
 
@@ -523,7 +517,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         if (lpTotalSupply == 0) return 0;
 
         uint256 tokenQuantity = (uint256(avgLpStaked) * reserve) / lpTotalSupply;
-        uint256 cubicMultiplier = _calculateCubicMultiplier(pool.multiplierMax, pool.timeThreshold, timeStaked);
+        uint256 cubicMultiplier = this.calculateCubicMultiplier(pool.multiplierMax, pool.timeThreshold, timeStaked);
 
         uint256 rewardsStaking = (tokenQuantity * yearlyRate * totalElapsed * cubicMultiplier) /
             (SCALE_FACTOR * uint256(SECONDS_PER_YEAR) * 1e6);
@@ -531,11 +525,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return rewardsStaking;
     }
 
-    function _calculateCubicMultiplier(
+    function calculateCubicMultiplier(
         uint256 multiplierMax,
         uint256 timeThreshold,
         uint256 timeStaked
-    ) internal pure returns (uint256) {
+    ) external pure returns (uint256) {
         if (timeStaked >= timeThreshold) {
             return multiplierMax;
         }
@@ -583,8 +577,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @return The amount of rewards accrued.
      */
     function _calculateRewards(uint224 amount_, uint256 elapsed_) internal view returns (uint224) {
-        console.log("internalTotalSupply", internalTotalSupply);
-        console.log("maxTotalSupply", maxTotalSupply);
         if (internalTotalSupply == maxTotalSupply) return 0;
         if (elapsed_ == 0) return 0;
         return toSafeUint224((amount_ * elapsed_ * yearlyRate) / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR)));
