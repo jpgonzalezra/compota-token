@@ -523,19 +523,19 @@ contract Compota is ICompota, ERC20Extended, Owned {
         StakingPool memory pool = pools[poolId_];
         (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(pool.lpToken).getReserves();
         address token0 = IUniswapV2Pair(pool.lpToken).token0();
-        uint256 reserve = (token0 == address(this)) ? reserve0 : reserve1;
+        uint256 compotaReserve = (token0 == address(this)) ? reserve0 : reserve1;
 
-        if (reserve == 0) {
+        if (compotaReserve == 0) {
             return 0;
         }
 
         uint256 lpTotalSupply = IERC20(pool.lpToken).totalSupply();
         if (lpTotalSupply == 0) return 0;
 
-        uint256 tokenQuantity = (uint256(avgLpStaked) * reserve) / lpTotalSupply;
+        uint256 compotaPortion = (uint256(avgLpStaked) * compotaReserve) / lpTotalSupply;
         uint256 cubicMultiplier = this.calculateCubicMultiplier(pool.multiplierMax, pool.timeThreshold, timeStaked);
 
-        uint256 rewardsStaking = (tokenQuantity * yearlyRate * totalElapsed * cubicMultiplier) /
+        uint256 rewardsStaking = (compotaPortion * yearlyRate * totalElapsed * cubicMultiplier) /
             (Constants.SCALE_FACTOR * uint256(Constants.SECONDS_PER_YEAR) * 1e6);
 
         return rewardsStaking;
