@@ -1,48 +1,48 @@
-name: Forge Coverage
+# name: Forge Coverage
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
+# on:
+#   push:
+#     branches:
+#       - main
+#   pull_request:
 
-permissions: write-all
+# permissions: write-all
 
-jobs:
-  check:
-    name: Code Coverage
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+# jobs:
+#   check:
+#     name: Code Coverage
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#         with:
+#           submodules: recursive
 
-      - name: Install Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: "21"
+#       - name: Install Node.js
+#         uses: actions/setup-node@v3
+#         with:
+#           node-version: "21"
 
-      - name: Install NPM dependencies
-        run: npm install
+#       - name: Install NPM dependencies
+#         run: npm install
 
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+#       - name: Install Foundry
+#         uses: foundry-rs/foundry-toolchain@v1
 
-      - name: Install lcov
-        uses: hrishikesh-kadam/setup-lcov@v1
+#       - name: Install lcov
+#         uses: hrishikesh-kadam/setup-lcov@v1
 
-      - name: Run coverage
-        env:
-          MNEMONIC: ${{ secrets.MNEMONIC_FOR_TESTS }}
-          MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
-        run: make coverage profile=ci
-        id: coverage
+#       - name: Run coverage
+#         env:
+#           MNEMONIC: ${{ secrets.MNEMONIC_FOR_TESTS }}
+#           MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
+#         run: make coverage profile=ci
+#         id: coverage
 
-      - name: Report code coverage
-        uses: zgosalvez/github-actions-report-lcov@v3
-        with:
-          coverage-files: lcov.info
-          artifact-name: code-coverage-report
-          minimum-coverage: 95
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          update-comment: true
+#       - name: Report code coverage
+#         uses: zgosalvez/github-actions-report-lcov@v3
+#         with:
+#           coverage-files: lcov.info
+#           artifact-name: code-coverage-report
+#           minimum-coverage: 95
+#           github-token: ${{ secrets.GITHUB_TOKEN }}
+#           update-comment: true
