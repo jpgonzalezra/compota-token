@@ -93,5 +93,11 @@ interface ICompota is IERC20Extended {
      */
     function claimRewards() external;
 
-    // TODO: add the missing interactive functions
+    function setRewardCooldownPeriod(uint32 newRewardCooldownPeriod_) external;
+
+    function addStakingPool(address lpToken_, uint32 multiplierMax_, uint32 timeThreshold_) external;
+
+    function stakeLiquidity(uint256 poolId_, uint256 amount_) external;
+
+    function unstakeLiquidity(uint256 poolId_, uint256 amount_) external;
 }

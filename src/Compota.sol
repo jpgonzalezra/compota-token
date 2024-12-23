@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.28;
 
-// import { console } from "forge-std/console.sol";
 import { Owned } from "solmate/auth/Owned.sol";
 import { ERC20Extended } from "@mzero-labs/ERC20Extended.sol";
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
 import { ICompota } from "./interfaces/ICompota.sol";
 import { IUniswapV2Pair } from "./interfaces/IUniswapV2Pair.sol";
 import { Constants } from "./Constants.sol";
+import { Helpers } from "./Helpers.sol";
 
 /**
  * @title Compota
@@ -132,17 +132,15 @@ contract Compota is ICompota, ERC20Extended, Owned {
                 activeStakers.push(caller);
             }
 
-            // Initialize staking period if not set
             if (stakeInfo.periodStartTimestamp == 0) {
                 stakeInfo.periodStartTimestamp = timestamp;
                 stakeInfo.lastStakeUpdateTimestamp = timestamp;
             }
         }
 
-        // Before modifying the balance, update the staking accumulation
         _updateStakingAccumulation(poolId_, caller);
 
-        stakeInfo.lpBalanceStaked += toSafeUint224(amount_);
+        stakeInfo.lpBalanceStaked += Helpers.toSafeUint224(amount_);
         stakeInfo.lastStakeUpdateTimestamp = timestamp;
     }
 
@@ -159,10 +157,9 @@ contract Compota is ICompota, ERC20Extended, Owned {
             revert NotEnoughStaked();
         }
 
-        // Update staking accumulation before modifying the balance
         _updateStakingAccumulation(poolId_, caller);
 
-        stakeInfo.lpBalanceStaked = staked - toSafeUint224(amount_);
+        stakeInfo.lpBalanceStaked = staked - Helpers.toSafeUint224(amount_);
         stakeInfo.lastStakeUpdateTimestamp = uint32(block.timestamp);
 
         if (stakeInfo.lpBalanceStaked == 0) {
@@ -241,6 +238,23 @@ contract Compota is ICompota, ERC20Extended, Owned {
         _updateRewards(caller);
     }
 
+    function calculateCubicMultiplier(
+        uint256 multiplierMax_,
+        uint256 timeThreshold_,
+        uint256 timeStaked_
+    ) public pure returns (uint256) {
+        if (timeStaked_ >= timeThreshold_) {
+            return multiplierMax_;
+        }
+        uint256 ratio = (timeStaked_ * 1e6) / timeThreshold_;
+        uint256 ratioCubed = (ratio * ratio * ratio) / (1e6 * 1e6);
+
+        uint256 one = 1e6;
+        uint256 cubicMultiplier = one + ((multiplierMax_ - one) * ratioCubed) / one;
+
+        return cubicMultiplier;
+    }
+
     /* ============ Internal Interactive Functions ============ */
 
     // TODO: doc
@@ -275,7 +289,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         _updateRewards(sender_);
         _updateRewards(recipient_);
 
-        uint224 amount224 = toSafeUint224(amount_);
+        uint224 amount224 = Helpers.toSafeUint224(amount_);
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint224 value.
         unchecked {
@@ -300,7 +314,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
             return;
         }
 
-        uint224 amount224 = toSafeUint224(amount_);
+        uint224 amount224 = Helpers.toSafeUint224(amount_);
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint224 value.
         unchecked {
@@ -317,7 +331,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @param amount_ The amount of tokens to burn.
      */
     function _burn(address from_, uint256 amount_) internal virtual {
-        uint224 amount224 = toSafeUint224(amount_);
+        uint224 amount224 = Helpers.toSafeUint224(amount_);
         // Cannot underflow because a user's balance
         // will never be larger than the total supply.
         unchecked {
@@ -527,23 +541,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return rewardsStaking;
     }
 
-    function calculateCubicMultiplier(
-        uint256 multiplierMax_,
-        uint256 timeThreshold_,
-        uint256 timeStaked_
-    ) public pure returns (uint256) {
-        if (timeStaked_ >= timeThreshold_) {
-            return multiplierMax_;
-        }
-        uint256 ratio = (timeStaked_ * 1e6) / timeThreshold_;
-        uint256 ratioCubed = (ratio * ratio * ratio) / (1e6 * 1e6);
-
-        uint256 one = 1e6;
-        uint256 cubicMultiplier = one + ((multiplierMax_ - one) * ratioCubed) / one;
-
-        return cubicMultiplier;
-    }
-
     /**
      * @notice Calculates the total current accrued rewards for the entire supply since the last update.
      * @return The amount of rewards accrued since the last update.
@@ -571,7 +568,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
             }
         }
 
-        return toSafeUint224(totalStakingRewards);
+        return Helpers.toSafeUint224(totalStakingRewards);
     }
 
     /**
@@ -589,10 +586,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
             mul = amount_ * elapsed_ * yearlyRate;
         }
 
-        return toSafeUint224(mul / (Constants.SCALE_FACTOR * uint256(Constants.SECONDS_PER_YEAR)));
+        return Helpers.toSafeUint224(mul / (Constants.SCALE_FACTOR * uint256(Constants.SECONDS_PER_YEAR)));
     }
-
-    /* ============ Helper Functions ============ */
 
     function _revertIfInsufficientBalance(address caller_, uint256 amount_) internal view {
         uint224 balance = _balances[caller_].value;
@@ -609,17 +604,5 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
     function _validatePoolId(uint256 poolId_) internal view {
         if (poolId_ >= pools.length) revert InvalidPoolId();
-    }
-
-    /**
-     * @notice Casts a given uint256 value to a uint224,
-     *         ensuring that it is less than or equal to the maximum uint224 value.
-     * @param  value_ The value to check.
-     * @return The value casted to uint224.
-     * @dev Based on https://github.com/MZero-Labs/common/blob/main/src/libs/UIntMath.sol
-     */
-    function toSafeUint224(uint256 value_) internal pure returns (uint224) {
-        if (value_ > type(uint224).max) revert InvalidUInt224();
-        return uint224(value_);
     }
 }
