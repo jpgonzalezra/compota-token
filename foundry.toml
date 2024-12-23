@@ -16,6 +16,7 @@ sizes = true
 
 [fuzz]
 runs = 5_000
+max_test_rejects = 100000
 
 [invariant]
 runs = 512            # The number of calls to make in the invariant tests
@@ -27,6 +28,7 @@ optimizer = true
 
 [profile.ci.fuzz]
 runs = 10_000
+max_test_rejects = 100000
 
 [profile.ci.invariant]
 runs = 512
