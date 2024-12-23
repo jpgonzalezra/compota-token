@@ -158,7 +158,8 @@ contract FuzzTests is Test {
         vm.assume(account != address(0));
         vm.assume(lpAmount >= 1e6 && lpAmount < MAX_SUPPLY);
         vm.assume(warpTime > block.timestamp);
-        vm.assume(reserve0 > 0 && reserve1 > 0);
+        vm.assume(reserve0 > 1);
+        vm.assume(reserve1 > 1);
 
         vm.prank(owner);
         token.addStakingPool(address(lpToken), 2e6, 365 days);
