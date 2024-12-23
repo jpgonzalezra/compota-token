@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.28;
 
+import { Constants } from "../../src/Constants.sol";
 import { Test } from "forge-std/Test.sol";
 import { Compota } from "../../src/Compota.sol";
 import { ICompota } from "../../src/interfaces/ICompota.sol";
@@ -113,7 +114,7 @@ contract FuzzTests is Test {
     function testFuzzSetYearlyRate(uint16 newRate) public {
         vm.prank(owner);
 
-        if (newRate < token.MIN_YEARLY_RATE() || newRate > token.MAX_YEARLY_RATE()) {
+        if (newRate < Constants.MIN_YEARLY_RATE || newRate > Constants.MAX_YEARLY_RATE) {
             vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidYearlyRate.selector, newRate));
             token.setYearlyRate(newRate);
         } else {

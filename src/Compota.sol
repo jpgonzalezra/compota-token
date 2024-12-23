@@ -7,6 +7,7 @@ import { ERC20Extended } from "@mzero-labs/ERC20Extended.sol";
 import { IERC20 } from "@mzero-labs/interfaces/IERC20.sol";
 import { ICompota } from "./interfaces/ICompota.sol";
 import { IUniswapV2Pair } from "./interfaces/IUniswapV2Pair.sol";
+import { Constants } from "./Constants.sol";
 
 /**
  * @title Compota
@@ -14,18 +15,6 @@ import { IUniswapV2Pair } from "./interfaces/IUniswapV2Pair.sol";
  */
 contract Compota is ICompota, ERC20Extended, Owned {
     /* ============ Variables ============ */
-
-    /// @notice Scale factor used to convert basis points (bps) into decimal fractions.
-    uint16 internal constant SCALE_FACTOR = 10_000; // Ex, 100 bps (1%) is converted to 0.01 by dividing by 10,000
-
-    /// @notice The number of seconds in a year.
-    uint32 internal constant SECONDS_PER_YEAR = 31_536_000;
-
-    /// @notice The minimum yearly rate of interest in basis points (bps).
-    uint16 public constant MIN_YEARLY_RATE = 100; // This represents a 1% annual percentage yield (APY).
-
-    /// @notice The maximum yearly rate of interest in basis points (bps).
-    uint16 public constant MAX_YEARLY_RATE = 4_000; // This represents a 40% annual percentage yield (APY).
 
     uint16 public yearlyRate;
 
@@ -95,7 +84,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @param newRate_ The new interest rate in basis points (BPS).
      */
     function setYearlyRate(uint16 newRate_) public onlyOwner {
-        if (newRate_ < MIN_YEARLY_RATE || newRate_ > MAX_YEARLY_RATE) {
+        if (newRate_ < Constants.MIN_YEARLY_RATE || newRate_ > Constants.MAX_YEARLY_RATE) {
             revert InvalidYearlyRate(newRate_);
         }
         uint16 oldYearlyRate = yearlyRate;
@@ -125,8 +114,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     function stakeLiquidity(uint256 poolId_, uint256 amount_) external {
-        if (poolId_ >= pools.length) revert InvalidPoolId();
-        if (amount_ == 0) revert InsufficientAmount(amount_);
+        _validatePoolId(poolId_);
+        _revertIfInsufficientAmount(amount_);
         address caller = msg.sender;
 
         _updateRewards(caller);
@@ -158,8 +147,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     function unstakeLiquidity(uint256 poolId_, uint256 amount_) external {
-        if (poolId_ >= pools.length) revert InvalidPoolId();
-        if (amount_ == 0) revert InsufficientAmount(amount_);
+        _validatePoolId(poolId_);
+        _revertIfInsufficientAmount(amount_);
 
         address caller = msg.sender;
         _updateRewards(caller);
@@ -421,11 +410,13 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     function _accumulateStakingTime(address account_) internal {
-        for (uint256 i = 0; i < pools.length; i++) {
+        uint256 poolLength = pools.length;
+        uint32 timestamp = uint32(block.timestamp);
+
+        for (uint256 i = 0; i < poolLength; i++) {
             UserStake storage stakeInfo = stakes[i][account_];
             if (stakeInfo.lpBalanceStaked == 0 || stakeInfo.lastStakeUpdateTimestamp == 0) continue;
 
-            uint32 timestamp = uint32(block.timestamp);
             uint32 elapsed = timestamp - stakeInfo.lastStakeUpdateTimestamp;
             if (elapsed > 0 && stakeInfo.lpBalanceStaked > 0) {
                 stakeInfo.accumulatedLpBalancePerTime += stakeInfo.lpBalanceStaked * elapsed;
@@ -435,7 +426,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     function _resetStakingPeriods(address account_, uint32 timestamp_) internal {
-        for (uint256 i = 0; i < pools.length; i++) {
+        uint256 poolLength = pools.length;
+        for (uint256 i = 0; i < poolLength; i++) {
             UserStake storage stakeInfo = stakes[i][account_];
             if (stakeInfo.lpBalanceStaked == 0) {
                 continue;
@@ -479,7 +471,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
         uint32 currentTimestamp_
     ) internal view returns (uint256) {
         uint256 totalStakingRewards = 0;
-        for (uint256 i = 0; i < pools.length; i++) {
+        uint256 poolLength = pools.length;
+        for (uint256 i = 0; i < poolLength; i++) {
             totalStakingRewards += _calculatePoolPendingStakingRewards(i, account_, currentTimestamp_);
         }
         return totalStakingRewards;
@@ -529,7 +522,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         uint256 cubicMultiplier = this.calculateCubicMultiplier(pool.multiplierMax, pool.timeThreshold, timeStaked);
 
         uint256 rewardsStaking = (tokenQuantity * yearlyRate * totalElapsed * cubicMultiplier) /
-            (SCALE_FACTOR * uint256(SECONDS_PER_YEAR) * 1e6);
+            (Constants.SCALE_FACTOR * uint256(Constants.SECONDS_PER_YEAR) * 1e6);
 
         return rewardsStaking;
     }
@@ -596,7 +589,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
             mul = amount_ * elapsed_ * yearlyRate;
         }
 
-        return toSafeUint224(mul / (SCALE_FACTOR * uint256(SECONDS_PER_YEAR)));
+        return toSafeUint224(mul / (Constants.SCALE_FACTOR * uint256(Constants.SECONDS_PER_YEAR)));
     }
 
     /* ============ Helper Functions ============ */
@@ -612,6 +605,10 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
     function _revertIfInvalidRecipient(address recipient_) internal pure {
         if (recipient_ == address(0)) revert InvalidRecipient(recipient_);
+    }
+
+    function _validatePoolId(uint256 poolId_) internal view {
+        if (poolId_ >= pools.length) revert InvalidPoolId();
     }
 
     /**

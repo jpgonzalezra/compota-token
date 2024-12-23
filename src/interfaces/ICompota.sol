@@ -92,4 +92,6 @@ interface ICompota is IERC20Extended {
      * @dev It can only be called by the owner of the rewards.
      */
     function claimRewards() external;
+
+    // TODO: add the missing interactive functions
 }
