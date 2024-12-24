@@ -27,7 +27,6 @@ optimizer = true
 
 [profile.ci.fuzz]
 runs = 10_000
-skip_tests = ["testFuzzCalculateStakingRewards"]
 
 [profile.ci.invariant]
 runs = 512
