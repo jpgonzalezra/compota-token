@@ -37,13 +37,13 @@
     "solmate": "6.8.0"
   },
   "devDependencies": {
+    "common": "github:mzero-labs/common#c9955286b5bdcc6fe6c4a59a77fe1d412564cd2a",
     "forge-std": "github:foundry-rs/forge-std#v1.8.1",
-    "common": "github:@mzero-labs/common#main",
-    "husky": "^9.0.11",
-    "lint-staged": "^15.2.2",
-    "prettier": "^3.2.5",
-    "prettier-plugin-solidity": "^1.3.1",
-    "solhint": "^4.5.2",
+    "husky": "9.1.7",
+    "lint-staged": "^15.2.11",
+    "prettier": "^3.4.2",
+    "prettier-plugin-solidity": "^1.4.1",
+    "solhint": "^4.5.4",
     "solhint-plugin-prettier": "^0.1.0"
   },
   "engines": {

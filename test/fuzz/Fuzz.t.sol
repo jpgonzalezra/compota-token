@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity 0.8.23;
+pragma solidity 0.8.28;
 
+import { Constants } from "../../src/Constants.sol";
 import { Test } from "forge-std/Test.sol";
-import { CompotaToken } from "../../src/CompotaToken.sol";
-import { ICompotaToken } from "../../src/intefaces/ICompotaToken.sol";
+import { Compota } from "../../src/Compota.sol";
+import { ICompota } from "../../src/interfaces/ICompota.sol";
+import { MockLPToken } from "../Compota.t.sol";
 
 contract FuzzTests is Test {
-    CompotaToken token;
+    Compota token;
     address owner = address(this);
     address alice = address(0x2);
     address bob = address(0x3);
+
+    MockLPToken lpToken;
 
     uint16 constant INTEREST_RATE = 1000; // 10% APY
     uint256 constant INITIAL_MINT = 1000 * 10 ** 6;
@@ -17,7 +21,9 @@ contract FuzzTests is Test {
 
     function setUp() public {
         vm.startPrank(owner);
-        token = new CompotaToken(INTEREST_RATE, 1 days, 1_000_000_000e6);
+        token = new Compota("Compota Token", "COMPOTA", INTEREST_RATE, 1 days, 1_000_000_000e6);
+        lpToken = new MockLPToken(address(token), address(0));
+
         vm.stopPrank();
     }
 
@@ -108,18 +114,106 @@ contract FuzzTests is Test {
     function testFuzzSetYearlyRate(uint16 newRate) public {
         vm.prank(owner);
 
-        if (newRate < token.MIN_YEARLY_RATE() || newRate > token.MAX_YEARLY_RATE()) {
-            vm.expectRevert(abi.encodeWithSelector(ICompotaToken.InvalidYearlyRate.selector, newRate));
+        if (newRate < Constants.MIN_YEARLY_RATE || newRate > Constants.MAX_YEARLY_RATE) {
+            vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidYearlyRate.selector, newRate));
             token.setYearlyRate(newRate);
         } else {
             uint16 oldRate = token.yearlyRate();
 
             vm.expectEmit(true, true, true, true);
-            emit ICompotaToken.YearlyRateUpdated(oldRate, newRate);
+            emit ICompota.YearlyRateUpdated(oldRate, newRate);
 
             token.setYearlyRate(newRate);
 
             assertEq(token.yearlyRate(), newRate);
         }
+    }
+
+    function testFuzzCalculateBaseRewards(address account, uint256 mintAmount, uint32 warpTime) public {
+        vm.assume(account != address(0));
+        vm.assume(mintAmount > 0 && mintAmount < MAX_SUPPLY);
+        vm.assume(warpTime > block.timestamp);
+
+        vm.prank(owner);
+        token.mint(account, mintAmount);
+        uint32 initialTimestamp = uint32(block.timestamp);
+
+        vm.warp(warpTime);
+
+        uint256 calculatedBaseRewards = token.calculateBaseRewards(account, uint32(block.timestamp));
+
+        uint256 elapsedTime = uint32(block.timestamp) - initialTimestamp;
+        uint256 expectedBaseRewards = (mintAmount * INTEREST_RATE * elapsedTime) / (10_000 * 365 days);
+
+        assertEq(calculatedBaseRewards, expectedBaseRewards, "Base rewards calculation mismatch");
+    }
+
+    function testFuzzCalculateStakingRewards(
+        address account,
+        uint256 lpAmount,
+        uint32 warpTime,
+        uint112 reserve0,
+        uint112 reserve1
+    ) public {
+        if (vm.envOr("CI", false)) {
+            return;
+        }
+        vm.assume(account != address(0));
+        vm.assume(lpAmount >= 1e6 && lpAmount < MAX_SUPPLY && reserve0 > 0 && reserve1 > 0);
+        vm.assume(warpTime > block.timestamp);
+
+        vm.prank(owner);
+        token.addStakingPool(address(lpToken), 2e6, 365 days);
+
+        vm.prank(owner);
+        lpToken.mint(account, lpAmount);
+        assertEq(lpToken.balanceOf(account), lpAmount);
+
+        lpToken.setReserves(reserve0, reserve1);
+
+        vm.prank(account);
+        lpToken.approve(address(token), lpAmount);
+        assertEq(lpToken.allowance(account, address(token)), lpAmount);
+
+        vm.prank(account);
+        token.stakeLiquidity(0, lpAmount);
+
+        uint32 initialTimestamp = uint32(block.timestamp);
+
+        vm.warp(warpTime);
+        uint32 timestampAfterWarpTime = uint32(block.timestamp);
+
+        uint256 calculatedStakingRewards = token.calculateStakingRewards(account, timestampAfterWarpTime);
+
+        uint256 elapsedTime = timestampAfterWarpTime - initialTimestamp;
+
+        uint256 lpTotalSupply = lpToken.totalSupply();
+        uint256 tokenQuantity = (lpAmount * reserve0) / lpTotalSupply;
+
+        uint256 cubicMultiplier = token.calculateCubicMultiplier(2e6, 365 days, elapsedTime);
+
+        uint256 expectedStakingRewards = (tokenQuantity * INTEREST_RATE * elapsedTime * cubicMultiplier) /
+            (10_000 * 365 days * 1e6);
+
+        assertApproxEqAbs(
+            calculatedStakingRewards,
+            expectedStakingRewards,
+            1e12,
+            "Staking rewards calculation mismatch"
+        );
+    }
+
+    function testFuzzAddStakingPool(address lpTokenAddress, uint32 multiplierMax, uint32 timeThreshold) public {
+        vm.assume(lpTokenAddress != address(0));
+        vm.assume(multiplierMax >= 1e6);
+        vm.assume(timeThreshold > 0);
+
+        vm.prank(owner);
+        token.addStakingPool(lpTokenAddress, multiplierMax, timeThreshold);
+
+        (address poolLpToken, uint32 poolMultiplierMax, uint32 poolTimeThreshold) = token.pools(0);
+        assertEq(poolLpToken, lpTokenAddress, "LP token address mismatch");
+        assertEq(poolMultiplierMax, multiplierMax, "Multiplier max mismatch");
+        assertEq(poolTimeThreshold, timeThreshold, "Time threshold mismatch");
     }
 }

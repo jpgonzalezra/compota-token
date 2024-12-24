@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0
 
-pragma solidity 0.8.23;
+pragma solidity 0.8.28;
 
 import { Script } from "forge-std/Script.sol";
-import { CompotaToken } from "../src/CompotaToken.sol";
+import { Compota } from "../src/Compota.sol";
 
 contract CompotaTokenScript is Script {
-    CompotaToken internal token;
+    Compota internal token;
 
     /// @dev Included to enable compilation of the script without a $MNEMONIC environment variable.
     string internal constant TEST_MNEMONIC = "test test test test test test test test test test test junk";
@@ -26,7 +26,7 @@ contract CompotaTokenScript is Script {
 
     function run() public {
         vm.startBroadcast(broadcaster);
-        token = new CompotaToken(YEARLY_RATE_DEFAULT, 1 days, 1_000_000_000e6);
+        token = new Compota("Compota Token", "COMPOTA", YEARLY_RATE_DEFAULT, 1 days, 1_000_000_000e6);
         vm.stopBroadcast();
     }
 }
