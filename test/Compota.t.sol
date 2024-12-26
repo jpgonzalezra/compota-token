@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.28;
-
 import { Test } from "forge-std/Test.sol";
 import { Compota } from "../src/Compota.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
@@ -45,6 +44,20 @@ contract CompotaTest is Test {
         assertEq(token.symbol(), "COMPOTA");
         assertEq(token.yearlyRate(), 1e3);
         assertEq(token.rewardCooldownPeriod(), 1 days);
+    }
+
+    function testTransferMoreThanBalanceReverts() external {
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encodeWithSelector(ICompota.InsufficientBalance.selector, 200e6));
+        token.transfer(bob, 200e6);
+    }
+
+    function testTransferToZeroAddressReverts() external {
+        _mint(owner, alice, 100e6);
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IERC20Extended.InvalidRecipient.selector, address(0)));
+        token.transfer(address(0), 50e6);
     }
 
     function testMintingByOwner() external {
@@ -733,35 +746,27 @@ contract CompotaTest is Test {
         lpToken1.setReserves(1_000_000e6, 10_000 ether);
 
         // Debug staking rewards calculation
-        //console.log("Staking Rewards Calculation:");
         uint256 lpTotalSupply = lpToken1.totalSupply();
-        //console.log("LP Token Total Supply:", lpTotalSupply);
 
         uint256 reserve0 = 1_000_000e6; // Token reserve
-        //console.log("Reserve0:", reserve0);
 
         uint256 timeElapsed = 180 days;
-        //console.log("Time Elapsed:", timeElapsed);
 
         // Calculate average staked balance
         uint256 accumulatedLpBalance = LP_AMOUNT * timeElapsed;
         uint256 avgLpStaked = accumulatedLpBalance / timeElapsed;
-        //console.log("Average LP Staked:", avgLpStaked);
 
         // Calculate cubic multiplier
         uint256 ratio = (timeElapsed * 1e6) / TIME_THRESHOLD;
         uint256 ratioCubed = (ratio * ratio * ratio) / (1e6 * 1e6);
         uint256 cubicMultiplier = 1e6 + ((MULTIPLIER_MAX - 1e6) * ratioCubed) / 1e6;
-        //console.log("Cubic Multiplier:", cubicMultiplier);
 
         // Calculate staking rewards
         uint256 stakingRewards = (avgLpStaked * reserve0 * INTEREST_RATE * timeElapsed * cubicMultiplier) /
             (lpTotalSupply * 10_000 * 365 days * 1e6);
-        //console.log("Expected Staking Rewards:", stakingRewards);
 
         // Verify balance includes staking rewards
         uint256 actualBalance = token.balanceOf(alice);
-        //console.log("Actual Balance:", actualBalance);
         assertEq(actualBalance, stakingRewards, "Balance with staking rewards mismatch");
     }
 
@@ -802,6 +807,73 @@ contract CompotaTest is Test {
 
         // Verify total balance includes both base and staking rewards
         assertEq(token.balanceOf(alice), expectedTotalBalance, "Total balance mismatch");
+    }
+
+    function testCalculateCubicMultiplierEdgeCases() public view {
+        // 1) timeStaked = 0 => ratio = 0 => multiplier = 1e6
+        uint256 mulZero = token.calculateCubicMultiplier(2e6, 365 days, 0);
+        assertEq(mulZero, 1e6, "Multiplier should be 1.0 when timeStaked = 0");
+
+        // 2) timeStaked = timeThreshold => ratio = 1 => (1^3=1) => multiplier = multiplierMax_
+        uint256 mulEqual = token.calculateCubicMultiplier(2e6, 365 days, 365 days);
+        assertEq(mulEqual, 2e6, "Multiplier should be multiplierMax if timeStaked == timeThreshold");
+
+        // 3) timeStaked way above the threshold => saturates at multiplierMax_
+        uint256 mulAbove = token.calculateCubicMultiplier(2e6, 365 days, 10 * 365 days);
+        assertEq(mulAbove, 2e6, "Multiplier should saturate at multiplierMax if timeStaked > timeThreshold");
+    }
+
+    function testCalculateRewardsWhenAlreadyAtMaxSupply() external {
+        uint224 localMaxSupply = 1000e6;
+        vm.prank(owner);
+        Compota tinyToken = new Compota("Tiny Token", "TINY", INTEREST_RATE, 1 days, localMaxSupply);
+
+        vm.prank(owner);
+        tinyToken.mint(alice, 1000e6);
+
+        vm.warp(block.timestamp + 30 days);
+
+        uint256 balanceBeforeClaim = tinyToken.balanceOf(alice);
+        vm.prank(alice);
+        tinyToken.claimRewards();
+        uint256 balanceAfterClaim = tinyToken.balanceOf(alice);
+
+        assertEq(balanceBeforeClaim, balanceAfterClaim, "Balance should not increase if already at max supply");
+    }
+
+    function testStakeThenImmediateClaimDoesNotPayRewards() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        vm.stopPrank();
+
+        // 1) Alice receives LP
+        lpToken1.mint(alice, 500e6);
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), 500e6);
+
+        // 2) Alice stakes
+        token.stakeLiquidity(0, 500e6);
+
+        // 3) Immediately (in the same block), Alice claims
+        //    => no rewards should be released due to the cooldown
+        uint256 balPre = token.balanceOf(alice);
+        token.claimRewards();
+        uint256 balPost = token.balanceOf(alice);
+
+        // The balance should remain identical
+        assertEq(balPre, balPost, "Should not receive rewards immediately after staking due to cooldown");
+        vm.stopPrank();
+    }
+
+    function testZeroElapsedTimeRewards() external {
+        _mint(owner, alice, 500e6);
+
+        vm.prank(alice);
+        uint256 balancePreClaim = token.balanceOf(alice);
+        token.claimRewards();
+        uint256 balancePostClaim = token.balanceOf(alice);
+
+        assertEq(balancePreClaim, balancePostClaim, "a");
     }
 
     /* ============ Helper functions ============ */

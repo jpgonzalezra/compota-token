@@ -11,7 +11,7 @@ import { Helpers } from "./Helpers.sol";
 
 /**
  * @title Compota
- * @dev ERC20 interest-bearing token that continuously accrues yield to its holders.
+ * @dev     // TODO: doc
  */
 contract Compota is ICompota, ERC20Extended, Owned {
     /* ============ Variables ============ */
@@ -145,6 +145,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         stakeInfo.lastStakeUpdateTimestamp = timestamp;
     }
 
+    // TODO: doc
     function unstakeLiquidity(uint256 poolId_, uint256 amount_) external {
         _validatePoolId(poolId_);
         _revertIfInsufficientAmount(amount_);
@@ -212,11 +213,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
             _calculatePendingBaseRewards(account_, timestamp) +
             _calculatePendingStakingRewards(account_, timestamp);
     }
-
+    // TODO: doc
     function calculateBaseRewards(address account_, uint32 currentTimestamp_) external view returns (uint256) {
         return _calculatePendingBaseRewards(account_, currentTimestamp_);
     }
-
+    // TODO: doc
     function calculateStakingRewards(address account_, uint32 currentTimestamp_) external view returns (uint256) {
         return _calculatePendingStakingRewards(account_, currentTimestamp_);
     }
@@ -239,6 +240,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         _updateRewards(caller);
     }
 
+    // TODO: doc
     function calculateCubicMultiplier(
         uint256 multiplierMax_,
         uint256 timeThreshold_,
@@ -343,6 +345,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         emit Transfer(from_, address(0), amount_);
     }
 
+    // TODO: doc
     function _updateRewardsWithoutCooldown(address accountAddress_, uint32 timestamp_) internal {
         AccountBalance storage account = _balances[accountAddress_];
         uint32 lastUpdate = account.lastUpdateTimestamp;
@@ -408,6 +411,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         _updateRewardsWithoutCooldown(account_, timestamp);
     }
 
+    // TODO: doc
     function _updateStakingAccumulation(uint256 poolId_, address account_) internal {
         uint32 timestamp = uint32(block.timestamp);
         UserStake storage stakeInfo = stakes[poolId_][account_];
@@ -424,7 +428,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
             stakeInfo.accumulatedLpBalancePerTime += stakeInfo.lpBalanceStaked * elapsed;
         }
     }
-
+    // TODO: doc
     function _accumulateStakingTime(address account_) internal {
         uint256 poolLength = pools.length;
         uint32 timestamp = uint32(block.timestamp);
@@ -441,6 +445,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         }
     }
 
+    // TODO: doc
     function _resetStakingPeriods(address account_, uint32 timestamp_) internal {
         uint256 poolLength = pools.length;
         for (uint256 i = 0; i < poolLength; i++) {
@@ -454,6 +459,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         }
     }
 
+    // TODO: doc
     function _calculatePendingBaseRewards(address account_, uint32 currentTimestamp_) internal view returns (uint256) {
         AccountBalance memory account = _balances[account_];
 
@@ -482,6 +488,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return _calculateRewards(avgBalance, totalElapsed);
     }
 
+    // TODO: doc
     function _calculatePendingStakingRewards(
         address account_,
         uint32 currentTimestamp_
@@ -494,6 +501,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return totalStakingRewards;
     }
 
+    // TODO: doc
     function _calculatePoolPendingStakingRewards(
         uint256 poolId_,
         address account_,
@@ -591,19 +599,23 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return Helpers.toSafeUint224(mul / (Constants.SCALE_FACTOR * uint256(Constants.SECONDS_PER_YEAR)));
     }
 
+    // TODO: doc
     function _revertIfInsufficientBalance(address caller_, uint256 amount_) internal view {
         uint224 balance = _balances[caller_].value;
         if (balance < amount_) revert InsufficientBalance(amount_);
     }
 
+    // TODO: doc
     function _revertIfInsufficientAmount(uint256 amount_) internal pure {
         if (amount_ == 0) revert InsufficientAmount(amount_);
     }
 
+    // TODO: doc
     function _revertIfInvalidRecipient(address recipient_) internal pure {
         if (recipient_ == address(0)) revert InvalidRecipient(recipient_);
     }
 
+    // TODO: doc
     function _validatePoolId(uint256 poolId_) internal view {
         if (poolId_ >= pools.length) revert InvalidPoolId();
     }

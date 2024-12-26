@@ -54,13 +54,13 @@ interface ICompota is IERC20Extended {
 
     /// @notice Emitted when a function is called by an address that is not authorized to perform the action.
     error Unauthorized();
-
+    // TODO: doc
     error InvalidMultiplierMax();
-
+    // TODO: doc
     error InvalidTimeThreshold();
-
+    // TODO: doc
     error NotStaker();
-
+    // TODO: doc
     error NotEnoughStaked();
 
     /* ============ Interactive Functions ============ */
@@ -93,11 +93,15 @@ interface ICompota is IERC20Extended {
      */
     function claimRewards() external;
 
+    // TODO: doc
     function setRewardCooldownPeriod(uint32 newRewardCooldownPeriod_) external;
 
+    // TODO: doc
     function addStakingPool(address lpToken_, uint32 multiplierMax_, uint32 timeThreshold_) external;
 
+    // TODO: doc
     function stakeLiquidity(uint256 poolId_, uint256 amount_) external;
 
+    // TODO: doc
     function unstakeLiquidity(uint256 poolId_, uint256 amount_) external;
 }
