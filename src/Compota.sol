@@ -113,6 +113,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         pools.push(StakingPool({ lpToken: lpToken_, multiplierMax: multiplierMax_, timeThreshold: timeThreshold_ }));
     }
 
+    // TODO: DOC
     function stakeLiquidity(uint256 poolId_, uint256 amount_) external {
         _validatePoolId(poolId_);
         _revertIfInsufficientAmount(amount_);
@@ -193,8 +194,8 @@ contract Compota is ICompota, ERC20Extended, Owned {
     function burn(uint256 amount_) external {
         _revertIfInsufficientAmount(amount_);
         address caller = msg.sender;
-        _updateRewardsWithoutCooldown(caller, uint32(block.timestamp));
         _revertIfInsufficientBalance(caller, amount_);
+        _updateRewardsWithoutCooldown(caller, uint32(block.timestamp));
         _burn(caller, amount_);
     }
 
@@ -284,6 +285,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
      */
     function _transfer(address sender_, address recipient_, uint256 amount_) internal override {
         _revertIfInvalidRecipient(recipient_);
+        _revertIfInsufficientBalance(sender_, amount_);
 
         // Update rewards for both sender and recipient
         _updateRewards(sender_);
