@@ -11,7 +11,8 @@ import { Helpers } from "./Helpers.sol";
 
 /**
  * @title Compota
- * @dev     // TODO: doc
+ * @dev Main contract implementing a yield-bearing ERC20 token.
+ *      Allows base reward accrual and additional staking-based rewards.
  */
 contract Compota is ICompota, ERC20Extended, Owned {
     /* ============ Variables ============ */
@@ -106,14 +107,21 @@ contract Compota is ICompota, ERC20Extended, Owned {
         emit RewardCooldownPeriodUpdated(oldCooldownPeriod_, newRewardCooldownPeriod_);
     }
 
-    // TODO: DOC
+    /**
+     * @notice Adds a new staking pool with a specified LP token, maximum multiplier, and time threshold.
+     * @dev Only callable by the contract owner. Reverts if the multiplier or threshold are invalid.
+     */
     function addStakingPool(address lpToken_, uint32 multiplierMax_, uint32 timeThreshold_) external onlyOwner {
         if (multiplierMax_ < 1e6) revert InvalidMultiplierMax();
         if (timeThreshold_ == 0) revert InvalidTimeThreshold();
         pools.push(StakingPool({ lpToken: lpToken_, multiplierMax: multiplierMax_, timeThreshold: timeThreshold_ }));
     }
 
-    // TODO: DOC
+    /**
+     * @notice Stakes the specified amount of LP tokens into a given pool.
+     * @dev Updates the caller’s staking data and transfers LP tokens into this contract.
+     *      Reverts if the pool ID is invalid or the amount is zero.
+     */
     function stakeLiquidity(uint256 poolId_, uint256 amount_) external {
         _validatePoolId(poolId_);
         _revertIfInsufficientAmount(amount_);
@@ -145,7 +153,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
         stakeInfo.lastStakeUpdateTimestamp = timestamp;
     }
 
-    // TODO: doc
+    /**
+     * @notice Unstakes a specified amount of LP tokens from a given pool.
+     * @dev Transfers LP tokens back to the user and updates staking data.
+     *      Reverts if the user has insufficient staked amount.
+     */
     function unstakeLiquidity(uint256 poolId_, uint256 amount_) external {
         _validatePoolId(poolId_);
         _revertIfInsufficientAmount(amount_);
@@ -213,11 +225,19 @@ contract Compota is ICompota, ERC20Extended, Owned {
             _calculatePendingBaseRewards(account_, timestamp) +
             _calculatePendingStakingRewards(account_, timestamp);
     }
-    // TODO: doc
+
+    /**
+     * @notice Calculates the user’s pending base rewards at a given timestamp.
+     * @dev Returns how many tokens would be accrued from simply holding Compota.
+     */
     function calculateBaseRewards(address account_, uint32 currentTimestamp_) external view returns (uint256) {
         return _calculatePendingBaseRewards(account_, currentTimestamp_);
     }
-    // TODO: doc
+
+    /**
+     * @notice Calculates the user’s pending staking rewards at a given timestamp.
+     * @dev Returns how many tokens would be earned from staking LP tokens, factoring in multipliers.
+     */
     function calculateStakingRewards(address account_, uint32 currentTimestamp_) external view returns (uint256) {
         return _calculatePendingStakingRewards(account_, currentTimestamp_);
     }
@@ -240,7 +260,16 @@ contract Compota is ICompota, ERC20Extended, Owned {
         _updateRewards(caller);
     }
 
-    // TODO: doc
+    /**
+     * @notice Computes a cubic time-based multiplier for staking rewards.
+     * @dev    As the staking duration grows closer to the `timeThreshold_`,
+     *         the multiplier smoothly transitions from 1× up to `multiplierMax_`.
+     * @param multiplierMax_  The maximum possible multiplier, scaled by 1e6.
+     * @param timeThreshold_  The threshold in seconds for reaching the full multiplier.
+     * @param timeStaked_     The actual time (in seconds) the user has staked.
+     * @return A scaled multiplier (1e6 base) that rewards users incrementally
+     *         based on how long they have staked relative to `timeThreshold_`.
+     */
     function calculateCubicMultiplier(
         uint256 multiplierMax_,
         uint256 timeThreshold_,
@@ -260,7 +289,10 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
     /* ============ Internal Interactive Functions ============ */
 
-    // TODO: doc
+    /**
+     * @dev Internal function that removes a user from the active stakers list once fully unstaked.
+     *      Reverts if the user is not currently an active staker.
+     */
     function _removeActiveStaker(address staker_) internal {
         uint256 indexPlusOne = _activeStakerIndices[staker_];
         if (indexPlusOne == 0) {
@@ -345,7 +377,10 @@ contract Compota is ICompota, ERC20Extended, Owned {
         emit Transfer(from_, address(0), amount_);
     }
 
-    // TODO: doc
+    /**
+     * @dev Updates rewards for an account without respecting the cooldown period,
+     *      minting any accrued base and staking rewards immediately.
+     */
     function _updateRewardsWithoutCooldown(address accountAddress_, uint32 timestamp_) internal {
         AccountBalance storage account = _balances[accountAddress_];
         uint32 lastUpdate = account.lastUpdateTimestamp;
@@ -411,7 +446,10 @@ contract Compota is ICompota, ERC20Extended, Owned {
         _updateRewardsWithoutCooldown(account_, timestamp);
     }
 
-    // TODO: doc
+    /**
+     * @dev Accumulates the user’s staked LP amount over time for accurate reward calculations.
+     *      Called before stake updates to refresh the user’s staking data.
+     */
     function _updateStakingAccumulation(uint256 poolId_, address account_) internal {
         uint32 timestamp = uint32(block.timestamp);
         UserStake storage stakeInfo = stakes[poolId_][account_];
@@ -428,7 +466,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
             stakeInfo.accumulatedLpBalancePerTime += stakeInfo.lpBalanceStaked * elapsed;
         }
     }
-    // TODO: doc
+
+    /**
+     * @dev Iterates over all pools to update each active stake’s elapsed time.
+     *      Useful when partial time elapses before a cooldown completes.
+     */
     function _accumulateStakingTime(address account_) internal {
         uint256 poolLength = pools.length;
         uint32 timestamp = uint32(block.timestamp);
@@ -445,7 +487,10 @@ contract Compota is ICompota, ERC20Extended, Owned {
         }
     }
 
-    // TODO: doc
+    /**
+     * @dev Resets the staking periods for a user in each pool, typically after rewards are claimed
+     *      or when cooldown has ended, ensuring a fresh accumulation interval.
+     */
     function _resetStakingPeriods(address account_, uint32 timestamp_) internal {
         uint256 poolLength = pools.length;
         for (uint256 i = 0; i < poolLength; i++) {
@@ -459,7 +504,10 @@ contract Compota is ICompota, ERC20Extended, Owned {
         }
     }
 
-    // TODO: doc
+    /**
+     * @dev Computes how many base (holding) rewards a user has accrued since their last update,
+     *      using the user’s average token balance over the elapsed period.
+     */
     function _calculatePendingBaseRewards(address account_, uint32 currentTimestamp_) internal view returns (uint256) {
         AccountBalance memory account = _balances[account_];
 
@@ -488,7 +536,10 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return _calculateRewards(avgBalance, totalElapsed);
     }
 
-    // TODO: doc
+    /**
+     * @dev Aggregates the staking rewards for all pools for a given user, factoring in
+     *      time-weighted staked amounts, LP reserves, and multipliers.
+     */
     function _calculatePendingStakingRewards(
         address account_,
         uint32 currentTimestamp_
@@ -501,55 +552,65 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return totalStakingRewards;
     }
 
-    // TODO: doc
-    function _calculatePoolPendingStakingRewards(
-        uint256 poolId_,
-        address account_,
-        uint32 currentTimestamp_
-    ) internal view returns (uint256) {
-        UserStake memory stakeInfo = stakes[poolId_][account_];
-        if (stakeInfo.lpBalanceStaked == 0 || stakeInfo.periodStartTimestamp == 0) return 0;
-
-        uint32 elapsedSinceLastUpdate = currentTimestamp_ > stakeInfo.lastStakeUpdateTimestamp
-            ? currentTimestamp_ - stakeInfo.lastStakeUpdateTimestamp
-            : 0;
-
-        uint224 tempAccumulated = stakeInfo.accumulatedLpBalancePerTime;
-        if (elapsedSinceLastUpdate > 0 && stakeInfo.lpBalanceStaked > 0) {
-            tempAccumulated += stakeInfo.lpBalanceStaked * elapsedSinceLastUpdate;
+        /**
+     * @notice Calculates the user's pending staking rewards for a specific pool.
+     * @dev    Combines average LP staked, LP token reserves, and the cubic multiplier
+     *         to find the portion of `Compota` accrued. Returns 0 if conditions (e.g.,
+     *         no staking, zero reserves, or zero LP supply) are not met.
+     * @param poolId_           The ID of the staking pool in the `pools` array.
+     * @param account_          The user's address.
+     * @param currentTimestamp_ The current block timestamp for reward calculation.
+     * @return The amount of `Compota` tokens earned from staking in this pool
+     *         since the last update, without minting them yet.
+     */
+        function _calculatePoolPendingStakingRewards(
+            uint256 poolId_,
+            address account_,
+            uint32 currentTimestamp_
+        ) internal view returns (uint256) {
+            UserStake memory stakeInfo = stakes[poolId_][account_];
+            if (stakeInfo.lpBalanceStaked == 0 || stakeInfo.periodStartTimestamp == 0) return 0;
+    
+            uint32 elapsedSinceLastUpdate = currentTimestamp_ > stakeInfo.lastStakeUpdateTimestamp
+                ? currentTimestamp_ - stakeInfo.lastStakeUpdateTimestamp
+                : 0;
+    
+            uint224 tempAccumulated = stakeInfo.accumulatedLpBalancePerTime;
+            if (elapsedSinceLastUpdate > 0 && stakeInfo.lpBalanceStaked > 0) {
+                tempAccumulated += stakeInfo.lpBalanceStaked * elapsedSinceLastUpdate;
+            }
+    
+            uint32 totalElapsed = currentTimestamp_ > stakeInfo.periodStartTimestamp
+                ? currentTimestamp_ - stakeInfo.periodStartTimestamp
+                : 0;
+    
+            if (totalElapsed == 0 || tempAccumulated == 0) return 0;
+    
+            uint224 avgLpStaked = tempAccumulated / totalElapsed;
+            uint256 timeStaked = stakeInfo.lpStakeStartTimestamp > 0
+                ? (currentTimestamp_ - stakeInfo.lpStakeStartTimestamp)
+                : 0;
+    
+            StakingPool memory pool = pools[poolId_];
+            (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(pool.lpToken).getReserves();
+            address token0 = IUniswapV2Pair(pool.lpToken).token0();
+            uint256 compotaReserve = (token0 == address(this)) ? reserve0 : reserve1;
+    
+            if (compotaReserve == 0) {
+                return 0;
+            }
+    
+            uint256 lpTotalSupply = IERC20(pool.lpToken).totalSupply();
+            if (lpTotalSupply == 0) return 0;
+    
+            uint256 compotaPortion = (uint256(avgLpStaked) * compotaReserve) / lpTotalSupply;
+            uint256 cubicMultiplier = this.calculateCubicMultiplier(pool.multiplierMax, pool.timeThreshold, timeStaked);
+    
+            uint256 rewardsStaking = (compotaPortion * yearlyRate * totalElapsed * cubicMultiplier) /
+                (Constants.SCALE_FACTOR * uint256(Constants.SECONDS_PER_YEAR) * 1e6);
+    
+            return rewardsStaking;
         }
-
-        uint32 totalElapsed = currentTimestamp_ > stakeInfo.periodStartTimestamp
-            ? currentTimestamp_ - stakeInfo.periodStartTimestamp
-            : 0;
-
-        if (totalElapsed == 0 || tempAccumulated == 0) return 0;
-
-        uint224 avgLpStaked = tempAccumulated / totalElapsed;
-        uint256 timeStaked = stakeInfo.lpStakeStartTimestamp > 0
-            ? (currentTimestamp_ - stakeInfo.lpStakeStartTimestamp)
-            : 0;
-
-        StakingPool memory pool = pools[poolId_];
-        (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(pool.lpToken).getReserves();
-        address token0 = IUniswapV2Pair(pool.lpToken).token0();
-        uint256 compotaReserve = (token0 == address(this)) ? reserve0 : reserve1;
-
-        if (compotaReserve == 0) {
-            return 0;
-        }
-
-        uint256 lpTotalSupply = IERC20(pool.lpToken).totalSupply();
-        if (lpTotalSupply == 0) return 0;
-
-        uint256 compotaPortion = (uint256(avgLpStaked) * compotaReserve) / lpTotalSupply;
-        uint256 cubicMultiplier = this.calculateCubicMultiplier(pool.multiplierMax, pool.timeThreshold, timeStaked);
-
-        uint256 rewardsStaking = (compotaPortion * yearlyRate * totalElapsed * cubicMultiplier) /
-            (Constants.SCALE_FACTOR * uint256(Constants.SECONDS_PER_YEAR) * 1e6);
-
-        return rewardsStaking;
-    }
 
     /**
      * @notice Calculates the total current accrued rewards for the entire supply since the last update.
@@ -599,23 +660,33 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return Helpers.toSafeUint224(mul / (Constants.SCALE_FACTOR * uint256(Constants.SECONDS_PER_YEAR)));
     }
 
-    // TODO: doc
+    /**
+     * @dev Checks whether `caller_` has enough balance (including accrued rewards).
+     *      Reverts if the amount to spend/burn exceeds current holdings.
+     */
     function _revertIfInsufficientBalance(address caller_, uint256 amount_) internal view {
         uint224 balance = _balances[caller_].value;
         if (balance < amount_) revert InsufficientBalance(amount_);
     }
 
-    // TODO: doc
+    /**
+     * @dev Reverts if the specified amount is zero, used to block 0-value stake, mint, transfer, etc.
+     */
     function _revertIfInsufficientAmount(uint256 amount_) internal pure {
         if (amount_ == 0) revert InsufficientAmount(amount_);
     }
 
-    // TODO: doc
+    /**
+     * @dev Reverts if `recipient_` is the zero address. Used to prevent sending tokens to `address(0)`.
+     */
     function _revertIfInvalidRecipient(address recipient_) internal pure {
         if (recipient_ == address(0)) revert InvalidRecipient(recipient_);
     }
 
-    // TODO: doc
+    /**
+     * @dev Ensures the given pool ID is valid (i.e., within the range of existing `pools`).
+     *      Reverts with `InvalidPoolId()` if out of range.
+     */
     function _validatePoolId(uint256 poolId_) internal view {
         if (poolId_ >= pools.length) revert InvalidPoolId();
     }
