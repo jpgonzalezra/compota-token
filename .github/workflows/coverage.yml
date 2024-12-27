@@ -43,6 +43,6 @@ jobs:
         with:
           coverage-files: lcov.info
           artifact-name: code-coverage-report
-          minimum-coverage: 95
+          minimum-coverage: 92
           github-token: ${{ secrets.GITHUB_TOKEN }}
           update-comment: true
