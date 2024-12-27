@@ -552,7 +552,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return totalStakingRewards;
     }
 
-        /**
+    /**
      * @notice Calculates the user's pending staking rewards for a specific pool.
      * @dev    Combines average LP staked, LP token reserves, and the cubic multiplier
      *         to find the portion of `Compota` accrued. Returns 0 if conditions (e.g.,
@@ -563,54 +563,54 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @return The amount of `Compota` tokens earned from staking in this pool
      *         since the last update, without minting them yet.
      */
-        function _calculatePoolPendingStakingRewards(
-            uint256 poolId_,
-            address account_,
-            uint32 currentTimestamp_
-        ) internal view returns (uint256) {
-            UserStake memory stakeInfo = stakes[poolId_][account_];
-            if (stakeInfo.lpBalanceStaked == 0 || stakeInfo.periodStartTimestamp == 0) return 0;
-    
-            uint32 elapsedSinceLastUpdate = currentTimestamp_ > stakeInfo.lastStakeUpdateTimestamp
-                ? currentTimestamp_ - stakeInfo.lastStakeUpdateTimestamp
-                : 0;
-    
-            uint224 tempAccumulated = stakeInfo.accumulatedLpBalancePerTime;
-            if (elapsedSinceLastUpdate > 0 && stakeInfo.lpBalanceStaked > 0) {
-                tempAccumulated += stakeInfo.lpBalanceStaked * elapsedSinceLastUpdate;
-            }
-    
-            uint32 totalElapsed = currentTimestamp_ > stakeInfo.periodStartTimestamp
-                ? currentTimestamp_ - stakeInfo.periodStartTimestamp
-                : 0;
-    
-            if (totalElapsed == 0 || tempAccumulated == 0) return 0;
-    
-            uint224 avgLpStaked = tempAccumulated / totalElapsed;
-            uint256 timeStaked = stakeInfo.lpStakeStartTimestamp > 0
-                ? (currentTimestamp_ - stakeInfo.lpStakeStartTimestamp)
-                : 0;
-    
-            StakingPool memory pool = pools[poolId_];
-            (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(pool.lpToken).getReserves();
-            address token0 = IUniswapV2Pair(pool.lpToken).token0();
-            uint256 compotaReserve = (token0 == address(this)) ? reserve0 : reserve1;
-    
-            if (compotaReserve == 0) {
-                return 0;
-            }
-    
-            uint256 lpTotalSupply = IERC20(pool.lpToken).totalSupply();
-            if (lpTotalSupply == 0) return 0;
-    
-            uint256 compotaPortion = (uint256(avgLpStaked) * compotaReserve) / lpTotalSupply;
-            uint256 cubicMultiplier = this.calculateCubicMultiplier(pool.multiplierMax, pool.timeThreshold, timeStaked);
-    
-            uint256 rewardsStaking = (compotaPortion * yearlyRate * totalElapsed * cubicMultiplier) /
-                (Constants.SCALE_FACTOR * uint256(Constants.SECONDS_PER_YEAR) * 1e6);
-    
-            return rewardsStaking;
+    function _calculatePoolPendingStakingRewards(
+        uint256 poolId_,
+        address account_,
+        uint32 currentTimestamp_
+    ) internal view returns (uint256) {
+        UserStake memory stakeInfo = stakes[poolId_][account_];
+        if (stakeInfo.lpBalanceStaked == 0 || stakeInfo.periodStartTimestamp == 0) return 0;
+
+        uint32 elapsedSinceLastUpdate = currentTimestamp_ > stakeInfo.lastStakeUpdateTimestamp
+            ? currentTimestamp_ - stakeInfo.lastStakeUpdateTimestamp
+            : 0;
+
+        uint224 tempAccumulated = stakeInfo.accumulatedLpBalancePerTime;
+        if (elapsedSinceLastUpdate > 0 && stakeInfo.lpBalanceStaked > 0) {
+            tempAccumulated += stakeInfo.lpBalanceStaked * elapsedSinceLastUpdate;
         }
+
+        uint32 totalElapsed = currentTimestamp_ > stakeInfo.periodStartTimestamp
+            ? currentTimestamp_ - stakeInfo.periodStartTimestamp
+            : 0;
+
+        if (totalElapsed == 0 || tempAccumulated == 0) return 0;
+
+        uint224 avgLpStaked = tempAccumulated / totalElapsed;
+        uint256 timeStaked = stakeInfo.lpStakeStartTimestamp > 0
+            ? (currentTimestamp_ - stakeInfo.lpStakeStartTimestamp)
+            : 0;
+
+        StakingPool memory pool = pools[poolId_];
+        (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(pool.lpToken).getReserves();
+        address token0 = IUniswapV2Pair(pool.lpToken).token0();
+        uint256 compotaReserve = (token0 == address(this)) ? reserve0 : reserve1;
+
+        if (compotaReserve == 0) {
+            return 0;
+        }
+
+        uint256 lpTotalSupply = IERC20(pool.lpToken).totalSupply();
+        if (lpTotalSupply == 0) return 0;
+
+        uint256 compotaPortion = (uint256(avgLpStaked) * compotaReserve) / lpTotalSupply;
+        uint256 cubicMultiplier = this.calculateCubicMultiplier(pool.multiplierMax, pool.timeThreshold, timeStaked);
+
+        uint256 rewardsStaking = (compotaPortion * yearlyRate * totalElapsed * cubicMultiplier) /
+            (Constants.SCALE_FACTOR * uint256(Constants.SECONDS_PER_YEAR) * 1e6);
+
+        return rewardsStaking;
+    }
 
     /**
      * @notice Calculates the total current accrued rewards for the entire supply since the last update.
