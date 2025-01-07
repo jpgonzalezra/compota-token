@@ -218,7 +218,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @return The total balance of the account.
      * @inheritdoc IERC20
      */
-    function balanceOf(address account_) external view override returns (uint256) {
+    function balanceOf(address account_) external view virtual returns (uint256) {
         uint32 timestamp = uint32(block.timestamp);
         return
             _balances[account_].value +
@@ -381,7 +381,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @dev Updates rewards for an account without respecting the cooldown period,
      *      minting any accrued base and staking rewards immediately.
      */
-    function _updateRewardsWithoutCooldown(address accountAddress_, uint32 timestamp_) internal {
+    function _updateRewardsWithoutCooldown(address accountAddress_, uint32 timestamp_) internal virtual {
         AccountBalance storage account = _balances[accountAddress_];
         uint32 lastUpdate = account.lastUpdateTimestamp;
         lastGlobalUpdateTimestamp = timestamp_;
@@ -420,7 +420,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @notice Updates the accrued rewards for the specified account.
      * @param account_ The address of the account for which rewards will be updated.
      */
-    function _updateRewards(address account_) internal {
+    function _updateRewards(address account_) internal virtual {
         uint32 timestamp = uint32(block.timestamp);
 
         uint32 latestClaim = _latestClaimTimestamp[account_];

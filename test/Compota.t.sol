@@ -930,3 +930,108 @@ contract MockLPToken is ERC20("Mock LP", "MLP", 18) {
         return (reserve0, reserve1, 0);
     }
 }
+
+contract MockCompotaWithBlacklist is Compota {
+    mapping(address => bool) public blacklist;
+
+    constructor(
+        string memory name_,
+        string memory symbol_,
+        uint16 yearlyRate_,
+        uint32 rewardCooldownPeriod_,
+        uint224 maxTotalSupply_
+    ) Compota(name_, symbol_, yearlyRate_, rewardCooldownPeriod_, maxTotalSupply_) {}
+
+    function setBlacklistStatus(address user_, bool status_) external onlyOwner {
+        blacklist[user_] = status_;
+    }
+
+    function _updateRewards(address accountAddress_) internal override {
+        if (blacklist[accountAddress_]) {
+            return;
+        }
+        super._updateRewards(accountAddress_);
+    }
+
+    function _updateRewardsWithoutCooldown(address accountAddress_, uint32 timestamp_) internal override {
+        if (blacklist[accountAddress_]) {
+            return;
+        }
+        super._updateRewardsWithoutCooldown(accountAddress_, timestamp_);
+    }
+
+    function balanceOf(address accountAddress_) external view override returns (uint256) {
+        if (blacklist[accountAddress_]) {
+            return _balances[accountAddress_].value;
+        }
+        uint32 timestamp = uint32(block.timestamp);
+        return
+            _balances[accountAddress_].value +
+            super._calculatePendingBaseRewards(accountAddress_, timestamp) +
+            super._calculatePendingStakingRewards(accountAddress_, timestamp);
+    }
+}
+
+contract MockCompotaWithBlacklistTest is Test {
+    MockCompotaWithBlacklist internal mockCompota;
+
+    address internal owner = address(11);
+    address internal alice = address(12);
+    address internal bob = address(13);
+
+    function setUp() public {
+        // Prank as the owner during deployment.
+        vm.startPrank(owner);
+        mockCompota = new MockCompotaWithBlacklist(
+            "Compota With Blacklist",
+            "CWB",
+            1000, // 10% APY, for example
+            3600, // 1 hour reward cooldown
+            1_000_000_000e6 // maxTotalSupply, e.g., 1,000,000,000
+        );
+        vm.stopPrank();
+    }
+
+    function testBlacklistedUserDoesNotEarnRewards() public {
+        vm.startPrank(owner);
+        mockCompota.mint(bob, 1000e6);
+        mockCompota.setBlacklistStatus(bob, true);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 1 days);
+
+        vm.startPrank(bob);
+        mockCompota.claimRewards();
+        vm.stopPrank();
+
+        uint256 balanceAfter = mockCompota.balanceOf(bob);
+        assertEq(balanceAfter, 1000e6, "Blacklisted user should NOT earn rewards");
+    }
+
+    function testRemovingUserFromBlacklist() public {
+        vm.startPrank(owner);
+        mockCompota.mint(bob, 1000e6);
+        mockCompota.setBlacklistStatus(bob, true);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 1 days);
+        vm.startPrank(bob);
+        mockCompota.claimRewards();
+        vm.stopPrank();
+
+        uint256 balanceAfter = mockCompota.balanceOf(bob);
+        assertEq(balanceAfter, 1000e6, "User is blacklisted, no rewards");
+
+        vm.startPrank(owner);
+        mockCompota.setBlacklistStatus(bob, false);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 1 days);
+        vm.startPrank(bob);
+        mockCompota.claimRewards();
+        vm.stopPrank();
+
+        balanceAfter = mockCompota.balanceOf(bob);
+        assertGt(balanceAfter, 1000e6, "User should earn rewards after removal from blacklist");
+    }
+}
