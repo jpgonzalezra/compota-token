@@ -490,15 +490,17 @@ contract CompotaTest is Test {
         token.addStakingPool(address(lpToken2), 3e6, 180 days);
         vm.stopPrank();
 
-        (address poolLp1, uint256 multiplierMax1, uint256 timeThreshold1) = getPoolData(0);
+        (address poolLp1, uint256 multiplierMax1, uint256 timeThreshold1, bool active) = getPoolData(0);
         assertEq(poolLp1, address(lpToken1));
         assertEq(multiplierMax1, 2e6);
         assertEq(timeThreshold1, 365 days);
+        assertEq(active, true);
 
-        (address poolLp2, uint256 multiplierMax2, uint256 timeThreshold2) = getPoolData(1);
+        (address poolLp2, uint256 multiplierMax2, uint256 timeThreshold2, bool active2) = getPoolData(1);
         assertEq(poolLp2, address(lpToken2));
         assertEq(multiplierMax2, 3e6);
         assertEq(timeThreshold2, 180 days);
+        assertEq(active2, true);
     }
 
     function testStakeInSinglePool() external {
@@ -880,8 +882,8 @@ contract CompotaTest is Test {
 
     function getPoolData(
         uint256 poolId
-    ) internal view returns (address lpTokenAddr, uint32 multiplierMax, uint32 timeThreshold) {
-        (lpTokenAddr, multiplierMax, timeThreshold) = token.pools(poolId);
+    ) internal view returns (address lpTokenAddr, uint32 multiplierMax, uint32 timeThreshold, bool active) {
+        (lpTokenAddr, multiplierMax, timeThreshold, active) = token.pools(poolId);
     }
 
     function _mint(address minter, address to, uint256 amount) internal {
@@ -933,6 +935,7 @@ contract MockLPToken is ERC20("Mock LP", "MLP", 18) {
 
 contract MockCompotaWithBlacklist is Compota {
     mapping(address => bool) public blacklist;
+    uint256 public blacklistedRewards;
 
     constructor(
         string memory name_,
@@ -948,6 +951,11 @@ contract MockCompotaWithBlacklist is Compota {
 
     function _updateRewards(address accountAddress_) internal override {
         if (blacklist[accountAddress_]) {
+            uint32 timestamp = uint32(block.timestamp);
+            uint256 baseRewards = _calculatePendingBaseRewards(accountAddress_, timestamp);
+            uint256 stakingRewards = _calculatePendingStakingRewards(accountAddress_, timestamp);
+
+            blacklistedRewards += (baseRewards + stakingRewards);
             return;
         }
         super._updateRewards(accountAddress_);
@@ -955,6 +963,11 @@ contract MockCompotaWithBlacklist is Compota {
 
     function _updateRewardsWithoutCooldown(address accountAddress_, uint32 timestamp_) internal override {
         if (blacklist[accountAddress_]) {
+            uint32 timestamp = uint32(block.timestamp);
+            uint256 baseRewards = _calculatePendingBaseRewards(accountAddress_, timestamp);
+            uint256 stakingRewards = _calculatePendingStakingRewards(accountAddress_, timestamp);
+
+            blacklistedRewards += (baseRewards + stakingRewards);
             return;
         }
         super._updateRewardsWithoutCooldown(accountAddress_, timestamp_);
@@ -969,6 +982,15 @@ contract MockCompotaWithBlacklist is Compota {
             _balances[accountAddress_].value +
             super._calculatePendingBaseRewards(accountAddress_, timestamp) +
             super._calculatePendingStakingRewards(accountAddress_, timestamp);
+    }
+
+    function totalSupply() public view override returns (uint256) {
+        return super.totalSupply() - blacklistedRewards;
+    }
+
+    // only for testing purpose
+    function superTotalSupply() external view returns (uint256) {
+        return super.totalSupply();
     }
 }
 
@@ -1033,5 +1055,23 @@ contract MockCompotaWithBlacklistTest is Test {
 
         balanceAfter = mockCompota.balanceOf(bob);
         assertGt(balanceAfter, 1000e6, "User should earn rewards after removal from blacklist");
+    }
+
+    function testBlacklistedUserDoesNotIncreaseTotalSupply() public {
+        vm.startPrank(owner);
+        mockCompota.mint(bob, 1000e6);
+        mockCompota.setBlacklistStatus(bob, true);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 30 days);
+
+        uint256 superTS = mockCompota.superTotalSupply();
+
+        uint256 currentTS = mockCompota.totalSupply();
+
+        assertEq(currentTS, superTS);
+
+        uint256 balanceBob = mockCompota.balanceOf(bob);
+        assertEq(balanceBob, 1000e6);
     }
 }

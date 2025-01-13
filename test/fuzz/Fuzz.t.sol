@@ -211,9 +211,10 @@ contract FuzzTests is Test {
         vm.prank(owner);
         token.addStakingPool(lpTokenAddress, multiplierMax, timeThreshold);
 
-        (address poolLpToken, uint32 poolMultiplierMax, uint32 poolTimeThreshold) = token.pools(0);
+        (address poolLpToken, uint32 poolMultiplierMax, uint32 poolTimeThreshold, bool active) = token.pools(0);
         assertEq(poolLpToken, lpTokenAddress, "LP token address mismatch");
         assertEq(poolMultiplierMax, multiplierMax, "Multiplier max mismatch");
         assertEq(poolTimeThreshold, timeThreshold, "Time threshold mismatch");
+        assertEq(active, true, "Active state pool mismatch");
     }
 }
