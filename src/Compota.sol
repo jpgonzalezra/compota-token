@@ -252,6 +252,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
             _calculatePendingStakingRewards(account_, timestamp);
     }
 
+    /**
+     * @notice Returns the user’s pending base rewards.
+     * @param account_ The address of the user to query.
+     * @return The total amount of base rewards accrued so far, in the smallest unit of the token.
+     */
     function getUserBaseRewards(address account_) external view returns (uint256) {
         return _calculatePendingBaseRewards(account_, uint32(block.timestamp));
     }
@@ -264,6 +269,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return _calculatePendingBaseRewards(account_, currentTimestamp_);
     }
 
+    /**
+     * @notice Returns the user’s pending staking rewards.
+     * @param account_ The address of the user to query.
+     * @return The total amount of staking rewards accrued so far, in the smallest unit of the token.
+     */
     function getUserStakingRewards(address account_) external view returns (uint256) {
         return _calculatePendingStakingRewards(account_, uint32(block.timestamp));
     }
@@ -276,6 +286,12 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return _calculatePendingStakingRewards(account_, currentTimestamp_);
     }
 
+    /**
+     * @notice Returns the user’s total pending rewards.
+     * @param account_ The address of the user to query.
+     * @return The total amount of unminted rewards the user would receive upon the next reward
+     *         update or claim, in the smallest unit of the token.
+     */
     function getUserTotalRewards(address account_) external view returns (uint256) {
         uint32 timestamp = uint32(block.timestamp);
         return _calculatePendingBaseRewards(account_, timestamp) + _calculatePendingStakingRewards(account_, timestamp);
