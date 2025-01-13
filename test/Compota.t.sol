@@ -848,21 +848,16 @@ contract CompotaTest is Test {
         token.addStakingPool(address(lpToken1), 2e6, 365 days);
         vm.stopPrank();
 
-        // 1) Alice receives LP
         lpToken1.mint(alice, 500e6);
         vm.startPrank(alice);
         lpToken1.approve(address(token), 500e6);
 
-        // 2) Alice stakes
         token.stakeLiquidity(0, 500e6);
 
-        // 3) Immediately (in the same block), Alice claims
-        //    => no rewards should be released due to the cooldown
         uint256 balPre = token.balanceOf(alice);
         token.claimRewards();
         uint256 balPost = token.balanceOf(alice);
 
-        // The balance should remain identical
         assertEq(balPre, balPost, "Should not receive rewards immediately after staking due to cooldown");
         vm.stopPrank();
     }
@@ -876,6 +871,60 @@ contract CompotaTest is Test {
         uint256 balancePostClaim = token.balanceOf(alice);
 
         assertEq(balancePreClaim, balancePostClaim, "a");
+    }
+
+    function testDisableStakingPoolSuccess() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        vm.stopPrank();
+
+        (address lp, uint32 multiplierMax, uint32 timeThreshold, bool isActive) = token.pools(0);
+        assertEq(lp, address(lpToken1), "LP token mismatch");
+        assertEq(multiplierMax, 2e6, "Multiplier mismatch");
+        assertEq(timeThreshold, 365 days, "Time threshold mismatch");
+        assertTrue(isActive, "Pool should be active initially");
+
+        vm.startPrank(owner);
+        vm.expectEmit(true, false, false, true);
+        emit ICompota.StakingPoolDisabled(0);
+
+        token.disableStakingPool(0);
+        vm.stopPrank();
+
+        (, , , bool isActiveAfter) = token.pools(0);
+        assertFalse(isActiveAfter, "Pool should be inactive after disabling");
+    }
+
+    function testDisableStakingPoolByNonOwnerReverts() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        vm.stopPrank();
+
+        vm.prank(alice);
+        vm.expectRevert("UNAUTHORIZED");
+        token.disableStakingPool(0);
+    }
+
+    function testDisableAlreadyInactivePoolReverts() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        token.disableStakingPool(0);
+        vm.stopPrank();
+
+        (, , , bool isActive) = token.pools(0);
+        assertFalse(isActive, "Pool should be inactive");
+
+        vm.startPrank(owner);
+        vm.expectRevert(ICompota.PoolAlreadyInactive.selector);
+        token.disableStakingPool(0);
+        vm.stopPrank();
+    }
+
+    function testDisableInvalidPoolIdReverts() external {
+        vm.startPrank(owner);
+        vm.expectRevert(ICompota.InvalidPoolId.selector);
+        token.disableStakingPool(0);
+        vm.stopPrank();
     }
 
     /* ============ Helper functions ============ */
