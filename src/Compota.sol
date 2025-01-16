@@ -298,12 +298,32 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     /**
-     * @notice Retrieves the total supply of tokens, including unclaimed rewards.
-     * @return totalSupply_ The total supply of tokens, including unclaimed rewards.
+     * @notice Returns the total supply of tokens currently minted and in circulation.
+     * @dev This value includes tokens that have been claimed and minted, but excludes unclaimed rewards.
+     * @return totalSupply_ The total supply of minted tokens.
      * @inheritdoc IERC20
      */
-    function totalSupply() public view virtual returns (uint256 totalSupply_) {
+    function totalSupply() public view returns (uint256 totalSupply_) {
+        return uint256(internalTotalSupply);
+    }
+
+    /**
+     * @notice Returns the total circulating supply of tokens.
+     * @dev This value includes all minted tokens plus unclaimed rewards (both base and staking rewards).
+     *      Unclaimed rewards are calculated dynamically.
+     * @return circulatingSupply The total supply of tokens currently in circulation, including rewards.
+     */
+    function totalCirculatingSupply() external view virtual returns (uint256 circulatingSupply) {
         return uint256(internalTotalSupply + _calculateGlobalBaseRewards() + _calculateGlobalStakingRewards());
+    }
+
+    /**
+     * @notice Returns the maximum possible supply of tokens, including all future rewards.
+     * @dev This value is fixed and represents the absolute upper limit of token issuance.
+     * @return maxSupply The total number of tokens that can ever exist.
+     */
+    function maxProjectedSupply() external view returns (uint224 maxSupply) {
+        return maxTotalSupply;
     }
 
     /**
