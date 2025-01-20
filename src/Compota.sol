@@ -326,6 +326,14 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return maxTotalSupply;
     }
 
+    function getPoolCounts() external view returns (uint256) {
+        return pools.length;
+    }
+
+    function getActiveStakerCounts() external view returns (uint256) {
+        return activeStakers.length;
+    }
+
     /**
      * @notice Claims the accumulated rewards for the sender.
      * @dev It can only be called by the owner of the rewards.
