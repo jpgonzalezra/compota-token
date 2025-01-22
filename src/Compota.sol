@@ -245,7 +245,16 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @inheritdoc IERC20
      */
     function balanceOf(address account_) external view virtual returns (uint256) {
+        if (_balances[account_].lastUpdateTimestamp == 0) {
+            return 0;
+        }
+
         uint32 timestamp = uint32(block.timestamp);
+        uint32 lastClaim = _latestClaimTimestamp[account_];
+        if (timestamp - lastClaim < rewardCooldownPeriod) {
+            return _balances[account_].value;
+        }
+
         return
             _balances[account_].value +
             _calculatePendingBaseRewards(account_, timestamp) +
@@ -443,10 +452,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
      */
     function _transfer(address sender_, address recipient_, uint256 amount_) internal override {
         _revertIfInvalidRecipient(recipient_);
-        _revertIfInsufficientBalance(sender_, amount_);
 
         // Update rewards for both sender and recipient
         _updateRewards(sender_);
+        _revertIfInsufficientBalance(sender_, amount_);
+
         _updateRewards(recipient_);
 
         uint224 amount224 = Helpers.toSafeUint224(amount_);
@@ -566,7 +576,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
             _accumulateStakingTime(account_);
             return;
         }
-
         _updateRewardsWithoutCooldown(account_, timestamp);
     }
 

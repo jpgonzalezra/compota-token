@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.28;
-import { Test } from "forge-std/Test.sol";
+import "forge-std/Test.sol";
 import { Compota } from "../src/Compota.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
 import { ICompota } from "../src/interfaces/ICompota.sol";
@@ -44,6 +44,20 @@ contract CompotaTest is Test {
         assertEq(token.symbol(), "COMPOTA");
         assertEq(token.yearlyRate(), 1e3);
         assertEq(token.rewardCooldownPeriod(), 1 days);
+    }
+
+    function testTransferAllBalanceAfterCooldown() external {
+        uint256 mintAmount = 1000 * 10e6;
+        _mint(owner, alice, mintAmount);
+
+        vm.warp(block.timestamp + 2 days);
+
+        uint256 aliceVisibleBalance = token.balanceOf(alice);
+
+        vm.startPrank(alice);
+        bool success = token.transfer(bob, aliceVisibleBalance);
+        vm.stopPrank();
+        assertTrue(success, "Transfer should succeed after reward cooldown is over");
     }
 
     function testTransferMoreThanBalanceReverts() external {
