@@ -144,6 +144,7 @@ This yields a **time-weighted average** of how much the user held or staked.
 ### Multi-Pool Support
 - The contract holds an array of `StakingPool`.
 - Each pool has its own LP token, `multiplierMax`, and `timeThreshold`.
+- Each `StakingPool` also includes a boolean `active` field. By default, `active = true` for new pools. The contract owner can call `disableStakingPool(poolId_)` to set `active = false` on a specific pool, preventing any further staking but leaving existing stakes intact. When a pool is disabled, a `StakingPoolDisabled(poolId_)` event is emitted to inform off-chain services.
 - Users can stake/unstake by specifying `poolId`.
 
 ### Min/Max Yearly Rate
@@ -174,6 +175,7 @@ This yields a **time-weighted average** of how much the user held or staked.
 ### Custom Errors & Event Emissions
 - Custom errors like `InvalidYearlyRate`, `NotEnoughStaked`, `InsufficientAmount` give precise revert reasons.
 - Events like `YearlyRateUpdated`, `RewardCooldownPeriodUpdated` ensure transparency.
+- `StakingPoolDisabled(uint256 poolId)`: Emitted when the owner disables an active pool, blocking future staking in that pool.
 
 ---
 
@@ -214,11 +216,11 @@ By leveraging Uniswap V2 compatibility, Compota ensures a balance between curren
 The Compota contract customizes several standard ERC20 methods to incorporate rewards logic and enforce system constraints:
 
 1. **`balanceOf(address account)`**:  
-   - Returns the current token balance, **including unclaimed base and staking rewards**.  
+   - For users who are **within** the reward cooldown (`timestamp - _latestClaimTimestamp[account] < rewardCooldownPeriod`), `balanceOf` returns only their already minted tokens (`_balances[account].value`) and **excludes** any unclaimed rewards. Once the cooldown has passed, `balanceOf` includes the dynamically computed base + staking rewards.
    - This ensures users see their effective balance at all times.
 
-2. **`totalSupply()`**:  
-   - Dynamically calculates the total supply, **including all pending unclaimed rewards** across accounts.  
+2. **`totalSupply()`**:   
+   - `totalSupply()` reflects only **minted** tokens, excluding unclaimed rewards. For the **full** supply (minted tokens + unclaimed rewards), there is `totalCirculatingSupply()`, which sums all pending base and staking rewards.
    - Enforces the `maxTotalSupply` constraint.
 
 3. **`_transfer(address sender, address recipient, uint256 amount)`**:  
@@ -280,6 +282,36 @@ Helper function for base reward math.
 ### Additional Public/External Functions
 - **`calculateCubicMultiplier(uint256 multiplierMax_, uint256 timeThreshold_, uint256 timeStaked_) returns (uint256)`**  
 Public helper to view the multiplier growth.
+
+- **`disableStakingPool(uint256 poolId_)`** (Owner-only):  
+Deactivates an existing pool by setting its `active` field to `false`, preventing further staking. Emits `StakingPoolDisabled(poolId_)`.
+
+- **`getUserBaseRewards(address account_)`**:  
+Returns the **current unclaimed** base rewards for `account_`.
+
+- **`getUserStakingRewards(address account_)`**:  
+Returns the **current unclaimed** staking rewards for `account_`.
+
+- **`getUserTotalRewards(address account_)`**:  
+Returns the **sum** of base and staking unclaimed rewards for `account_`.
+
+- **`totalCirculatingSupply()`**:  
+Returns the **minted** tokens **plus** unclaimed rewards (i.e., the “real” total supply in circulation).
+
+- **`maxProjectedSupply()`**:  
+Exposes the immutable `maxTotalSupply` value, indicating the absolute maximum tokens that can ever exist.
+
+- **`getCurrentMultiplier(address account_, uint256 poolId_)`**:  
+Shows the user’s real-time cubic multiplier for a specific pool, factoring in `lpStakeStartTimestamp`.
+
+- **`isClaimable(address account_)`**:  
+Returns a `uint32 timeLeft` indicating how many seconds until `account_` can claim again. If `timeLeft == 0`, the user can claim.
+
+- **`getPoolCounts()`**:  
+Returns the total number of staking pools.
+
+- **`getActiveStakerCounts()`**:  
+Returns the length of the internal `activeStakers` array, i.e., how many addresses currently have nonzero stakes.
 
 ---
 
