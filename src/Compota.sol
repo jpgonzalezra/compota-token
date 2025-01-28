@@ -38,6 +38,7 @@ contract Compota is ICompota, ERC20Extended, Owned {
         address lpToken;
         uint32 multiplierMax;
         uint32 timeThreshold;
+        bool active;
     }
 
     struct UserStake {
@@ -114,7 +115,32 @@ contract Compota is ICompota, ERC20Extended, Owned {
     function addStakingPool(address lpToken_, uint32 multiplierMax_, uint32 timeThreshold_) external onlyOwner {
         if (multiplierMax_ < 1e6) revert InvalidMultiplierMax();
         if (timeThreshold_ == 0) revert InvalidTimeThreshold();
-        pools.push(StakingPool({ lpToken: lpToken_, multiplierMax: multiplierMax_, timeThreshold: timeThreshold_ }));
+        pools.push(
+            StakingPool({
+                lpToken: lpToken_,
+                multiplierMax: multiplierMax_,
+                timeThreshold: timeThreshold_,
+                active: true
+            })
+        );
+    }
+
+    /**
+     * @notice Disables (deactivates) an existing staking pool by its pool ID.
+     * @dev Only callable by the contract owner. Reverts if the pool ID is invalid or
+     *      if the pool is already inactive.
+     * @param poolId_ The ID of the staking pool in the `pools` array.
+     */
+    function disableStakingPool(uint256 poolId_) external onlyOwner {
+        _validatePoolId(poolId_);
+        StakingPool storage pool = pools[poolId_];
+        if (!pool.active) {
+            revert PoolAlreadyInactive();
+        }
+
+        pool.active = false;
+
+        emit StakingPoolDisabled(poolId_);
     }
 
     /**
@@ -219,11 +245,29 @@ contract Compota is ICompota, ERC20Extended, Owned {
      * @inheritdoc IERC20
      */
     function balanceOf(address account_) external view virtual returns (uint256) {
+        if (_balances[account_].lastUpdateTimestamp == 0) {
+            return 0;
+        }
+
         uint32 timestamp = uint32(block.timestamp);
+        uint32 lastClaim = _latestClaimTimestamp[account_];
+        if (timestamp - lastClaim < rewardCooldownPeriod) {
+            return _balances[account_].value;
+        }
+
         return
             _balances[account_].value +
             _calculatePendingBaseRewards(account_, timestamp) +
             _calculatePendingStakingRewards(account_, timestamp);
+    }
+
+    /**
+     * @notice Returns the user’s pending base rewards.
+     * @param account_ The address of the user to query.
+     * @return The total amount of base rewards accrued so far, in the smallest unit of the token.
+     */
+    function getUserBaseRewards(address account_) external view returns (uint256) {
+        return _calculatePendingBaseRewards(account_, uint32(block.timestamp));
     }
 
     /**
@@ -235,6 +279,15 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     /**
+     * @notice Returns the user’s pending staking rewards.
+     * @param account_ The address of the user to query.
+     * @return The total amount of staking rewards accrued so far, in the smallest unit of the token.
+     */
+    function getUserStakingRewards(address account_) external view returns (uint256) {
+        return _calculatePendingStakingRewards(account_, uint32(block.timestamp));
+    }
+
+    /**
      * @notice Calculates the user’s pending staking rewards at a given timestamp.
      * @dev Returns how many tokens would be earned from staking LP tokens, factoring in multipliers.
      */
@@ -243,12 +296,51 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     /**
-     * @notice Retrieves the total supply of tokens, including unclaimed rewards.
-     * @return totalSupply_ The total supply of tokens, including unclaimed rewards.
+     * @notice Returns the user’s total pending rewards.
+     * @param account_ The address of the user to query.
+     * @return The total amount of unminted rewards the user would receive upon the next reward
+     *         update or claim, in the smallest unit of the token.
+     */
+    function getUserTotalRewards(address account_) external view returns (uint256) {
+        uint32 timestamp = uint32(block.timestamp);
+        return _calculatePendingBaseRewards(account_, timestamp) + _calculatePendingStakingRewards(account_, timestamp);
+    }
+
+    /**
+     * @notice Returns the total supply of tokens currently minted and in circulation.
+     * @dev This value includes tokens that have been claimed and minted, but excludes unclaimed rewards.
+     * @return totalSupply_ The total supply of minted tokens.
      * @inheritdoc IERC20
      */
-    function totalSupply() external view returns (uint256 totalSupply_) {
+    function totalSupply() public view returns (uint256 totalSupply_) {
+        return uint256(internalTotalSupply);
+    }
+
+    /**
+     * @notice Returns the total circulating supply of tokens.
+     * @dev This value includes all minted tokens plus unclaimed rewards (both base and staking rewards).
+     *      Unclaimed rewards are calculated dynamically.
+     * @return circulatingSupply The total supply of tokens currently in circulation, including rewards.
+     */
+    function totalCirculatingSupply() external view virtual returns (uint256 circulatingSupply) {
         return uint256(internalTotalSupply + _calculateGlobalBaseRewards() + _calculateGlobalStakingRewards());
+    }
+
+    /**
+     * @notice Returns the maximum possible supply of tokens, including all future rewards.
+     * @dev This value is fixed and represents the absolute upper limit of token issuance.
+     * @return maxSupply The total number of tokens that can ever exist.
+     */
+    function maxProjectedSupply() external view returns (uint224 maxSupply) {
+        return maxTotalSupply;
+    }
+
+    function getPoolCounts() external view returns (uint256) {
+        return pools.length;
+    }
+
+    function getActiveStakerCounts() external view returns (uint256) {
+        return activeStakers.length;
     }
 
     /**
@@ -287,6 +379,47 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return cubicMultiplier;
     }
 
+    /**
+     * @notice Returns the current multiplier for a user in a specific pool, based on how long they've been staked.
+     * @dev    Uses the same math as `calculateCubicMultiplier`, factoring in
+     *         `lpStakeStartTimestamp` to see how much time has elapsed for that user.
+     * @param account_    The address of the user.
+     * @param poolId_  The ID of the staking pool in the `pools` array.
+     * @return currentMultiplier A scaled multiplier (base 1e6) indicating the user's boost.
+     */
+    function getCurrentMultiplier(address account_, uint256 poolId_) external view returns (uint256) {
+        if (poolId_ >= pools.length) {
+            return 1e6;
+        }
+
+        UserStake memory stakeInfo = stakes[poolId_][account_];
+        if (stakeInfo.lpBalanceStaked == 0) {
+            return 1e6;
+        }
+
+        uint256 timeStaked = (stakeInfo.lpStakeStartTimestamp > 0)
+            ? block.timestamp - stakeInfo.lpStakeStartTimestamp
+            : 0;
+
+        StakingPool memory pool = pools[poolId_];
+        return this.calculateCubicMultiplier(pool.multiplierMax, pool.timeThreshold, timeStaked);
+    }
+
+    /**
+     * @notice Checks if a user's rewards are claimable at this moment.
+     * @dev    If the cooldown has passed, it returns `(true, 0)`.
+     *         Otherwise, it returns `(false, timeRemaining)`,
+     *         where `timeRemaining` is how many seconds are left until they can claim.
+     * @param account_ The address of the user to query.
+     * @return timeLeft  The number of seconds remaining until the user can claim if not claimable.
+     *                   Returns `0` if claimable is `true`.
+     */
+    function isClaimable(address account_) external view returns (uint32 timeLeft) {
+        uint32 lastClaim = _latestClaimTimestamp[account_];
+        uint32 elapsed = uint32(block.timestamp) - lastClaim;
+        timeLeft = (elapsed >= rewardCooldownPeriod) ? 0 : rewardCooldownPeriod - elapsed;
+    }
+
     /* ============ Internal Interactive Functions ============ */
 
     /**
@@ -319,10 +452,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
      */
     function _transfer(address sender_, address recipient_, uint256 amount_) internal override {
         _revertIfInvalidRecipient(recipient_);
-        _revertIfInsufficientBalance(sender_, amount_);
 
         // Update rewards for both sender and recipient
         _updateRewards(sender_);
+        _revertIfInsufficientBalance(sender_, amount_);
+
         _updateRewards(recipient_);
 
         uint224 amount224 = Helpers.toSafeUint224(amount_);
@@ -442,7 +576,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
             _accumulateStakingTime(account_);
             return;
         }
-
         _updateRewardsWithoutCooldown(account_, timestamp);
     }
 
@@ -612,6 +745,10 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return rewardsStaking;
     }
 
+    function getGlobalRewards() external view returns (uint224) {
+        return _calculateGlobalBaseRewards() + _calculateGlobalStakingRewards();
+    }
+
     /**
      * @notice Calculates the total current accrued rewards for the entire supply since the last update.
      * @return The amount of rewards accrued since the last update.
@@ -633,7 +770,6 @@ contract Compota is ICompota, ERC20Extended, Owned {
 
         for (uint256 i = 0; i < activeStakersLength; i++) {
             address staker = activeStakers[i];
-
             for (uint256 poolId = 0; poolId < poolsLength; poolId++) {
                 totalStakingRewards += _calculatePoolPendingStakingRewards(poolId, staker, timestamp);
             }

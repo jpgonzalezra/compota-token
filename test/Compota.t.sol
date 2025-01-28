@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.28;
-import { Test } from "forge-std/Test.sol";
+import "forge-std/Test.sol";
 import { Compota } from "../src/Compota.sol";
 import { IERC20Extended } from "@mzero-labs/interfaces/IERC20Extended.sol";
 import { ICompota } from "../src/interfaces/ICompota.sol";
@@ -44,6 +44,20 @@ contract CompotaTest is Test {
         assertEq(token.symbol(), "COMPOTA");
         assertEq(token.yearlyRate(), 1e3);
         assertEq(token.rewardCooldownPeriod(), 1 days);
+    }
+
+    function testTransferAllBalanceAfterCooldown() external {
+        uint256 mintAmount = 1000 * 10e6;
+        _mint(owner, alice, mintAmount);
+
+        vm.warp(block.timestamp + 2 days);
+
+        uint256 aliceVisibleBalance = token.balanceOf(alice);
+
+        vm.startPrank(alice);
+        bool success = token.transfer(bob, aliceVisibleBalance);
+        vm.stopPrank();
+        assertTrue(success, "Transfer should succeed after reward cooldown is over");
     }
 
     function testTransferMoreThanBalanceReverts() external {
@@ -298,13 +312,13 @@ contract CompotaTest is Test {
         _mint(owner, bob, bobInitialMint);
 
         uint256 totalSupply = aliceInitialMint + bobInitialMint;
-        assertEq(token.totalSupply(), totalSupply);
+        assertEq(token.totalCirculatingSupply(), totalSupply);
 
         vm.warp(block.timestamp + 180 days);
 
         uint256 expectedRewards = (totalSupply * INTEREST_RATE * 180 days) / (SCALE_FACTOR * 365 days);
 
-        assertEq(token.totalSupply(), totalSupply + expectedRewards);
+        assertEq(token.totalCirculatingSupply(), totalSupply + expectedRewards);
     }
 
     function testClaimRewardsRewardCooldownPeriodNotCompleted() public {
@@ -426,10 +440,10 @@ contract CompotaTest is Test {
         _mint(owner, bob, remaining);
 
         _mint(owner, bob, 1);
-        assertEq(token.totalSupply(), maxSupply);
+        assertEq(token.totalCirculatingSupply(), maxSupply);
 
         vm.warp(block.timestamp + 100 days);
-        assertEq(token.totalSupply(), maxSupply);
+        assertEq(token.totalCirculatingSupply(), maxSupply);
     }
 
     function testMintPartialWhenNearMaxTotalSupply() public {
@@ -446,7 +460,7 @@ contract CompotaTest is Test {
         token.mint(bob, 2 * 10e6);
 
         assertEq(token.balanceOf(bob), remaining);
-        assertEq(token.totalSupply(), maxSupply);
+        assertEq(token.totalCirculatingSupply(), maxSupply);
     }
 
     function testInterestAccrualRespectsMaxTotalSupply() external {
@@ -465,22 +479,22 @@ contract CompotaTest is Test {
         uint256 firstPeriodInterest = (balanceRaw * INTEREST_RATE * timeElapsed) / (SCALE_FACTOR * 365 days);
         uint256 expectedSupply = balanceRaw + firstPeriodInterest;
 
-        uint256 totalSupplyAfterInterest = token.totalSupply();
+        uint256 totalSupplyAfterInterest = token.totalCirculatingSupply();
         assertEq(totalSupplyAfterInterest, expectedSupply, "Total supply after interest mismatch");
         assertTrue(totalSupplyAfterInterest <= maxSupply, "Total supply exceeded maxTotalSupply");
 
         uint256 additionalMint = 400 * 10e6;
-        uint256 remainingSupply = maxSupply - token.totalSupply();
+        uint256 remainingSupply = maxSupply - token.totalCirculatingSupply();
         uint256 adjustedMint = additionalMint > remainingSupply ? remainingSupply : additionalMint;
         _mint(owner, alice, adjustedMint);
 
         expectedSupply += adjustedMint;
-        assertEq(token.totalSupply(), expectedSupply, "Total supply should equal maxTotalSupply");
+        assertEq(token.totalCirculatingSupply(), expectedSupply, "Total supply should equal maxTotalSupply");
 
         timeElapsed = 185 days;
         vm.warp(block.timestamp + timeElapsed);
 
-        assertEq(token.totalSupply(), maxSupply, "Total supply should not exceed maxTotalSupply");
+        assertEq(token.totalCirculatingSupply(), maxSupply, "Total supply should not exceed maxTotalSupply");
         assertEq(token.balanceOf(alice), maxSupply, "Alice's balance should match maxTotalSupply");
     }
 
@@ -490,15 +504,17 @@ contract CompotaTest is Test {
         token.addStakingPool(address(lpToken2), 3e6, 180 days);
         vm.stopPrank();
 
-        (address poolLp1, uint256 multiplierMax1, uint256 timeThreshold1) = getPoolData(0);
+        (address poolLp1, uint256 multiplierMax1, uint256 timeThreshold1, bool active) = getPoolData(0);
         assertEq(poolLp1, address(lpToken1));
         assertEq(multiplierMax1, 2e6);
         assertEq(timeThreshold1, 365 days);
+        assertEq(active, true);
 
-        (address poolLp2, uint256 multiplierMax2, uint256 timeThreshold2) = getPoolData(1);
+        (address poolLp2, uint256 multiplierMax2, uint256 timeThreshold2, bool active2) = getPoolData(1);
         assertEq(poolLp2, address(lpToken2));
         assertEq(multiplierMax2, 3e6);
         assertEq(timeThreshold2, 180 days);
+        assertEq(active2, true);
     }
 
     function testStakeInSinglePool() external {
@@ -706,7 +722,7 @@ contract CompotaTest is Test {
         vm.warp(block.timestamp + 180 days);
 
         lpToken1.setReserves(1000e6, 1 ether);
-        uint256 globalStakingRewards = token.totalSupply();
+        uint256 globalStakingRewards = token.totalCirculatingSupply();
 
         assertEq(globalStakingRewards, 27614760, "Global staking rewards should be the same");
     }
@@ -846,21 +862,16 @@ contract CompotaTest is Test {
         token.addStakingPool(address(lpToken1), 2e6, 365 days);
         vm.stopPrank();
 
-        // 1) Alice receives LP
         lpToken1.mint(alice, 500e6);
         vm.startPrank(alice);
         lpToken1.approve(address(token), 500e6);
 
-        // 2) Alice stakes
         token.stakeLiquidity(0, 500e6);
 
-        // 3) Immediately (in the same block), Alice claims
-        //    => no rewards should be released due to the cooldown
         uint256 balPre = token.balanceOf(alice);
         token.claimRewards();
         uint256 balPost = token.balanceOf(alice);
 
-        // The balance should remain identical
         assertEq(balPre, balPost, "Should not receive rewards immediately after staking due to cooldown");
         vm.stopPrank();
     }
@@ -876,12 +887,66 @@ contract CompotaTest is Test {
         assertEq(balancePreClaim, balancePostClaim, "a");
     }
 
+    function testDisableStakingPoolSuccess() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        vm.stopPrank();
+
+        (address lp, uint32 multiplierMax, uint32 timeThreshold, bool isActive) = token.pools(0);
+        assertEq(lp, address(lpToken1), "LP token mismatch");
+        assertEq(multiplierMax, 2e6, "Multiplier mismatch");
+        assertEq(timeThreshold, 365 days, "Time threshold mismatch");
+        assertTrue(isActive, "Pool should be active initially");
+
+        vm.startPrank(owner);
+        vm.expectEmit(true, false, false, true);
+        emit ICompota.StakingPoolDisabled(0);
+
+        token.disableStakingPool(0);
+        vm.stopPrank();
+
+        (, , , bool isActiveAfter) = token.pools(0);
+        assertFalse(isActiveAfter, "Pool should be inactive after disabling");
+    }
+
+    function testDisableStakingPoolByNonOwnerReverts() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        vm.stopPrank();
+
+        vm.prank(alice);
+        vm.expectRevert("UNAUTHORIZED");
+        token.disableStakingPool(0);
+    }
+
+    function testDisableAlreadyInactivePoolReverts() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        token.disableStakingPool(0);
+        vm.stopPrank();
+
+        (, , , bool isActive) = token.pools(0);
+        assertFalse(isActive, "Pool should be inactive");
+
+        vm.startPrank(owner);
+        vm.expectRevert(ICompota.PoolAlreadyInactive.selector);
+        token.disableStakingPool(0);
+        vm.stopPrank();
+    }
+
+    function testDisableInvalidPoolIdReverts() external {
+        vm.startPrank(owner);
+        vm.expectRevert(ICompota.InvalidPoolId.selector);
+        token.disableStakingPool(0);
+        vm.stopPrank();
+    }
+
     /* ============ Helper functions ============ */
 
     function getPoolData(
         uint256 poolId
-    ) internal view returns (address lpTokenAddr, uint32 multiplierMax, uint32 timeThreshold) {
-        (lpTokenAddr, multiplierMax, timeThreshold) = token.pools(poolId);
+    ) internal view returns (address lpTokenAddr, uint32 multiplierMax, uint32 timeThreshold, bool active) {
+        (lpTokenAddr, multiplierMax, timeThreshold, active) = token.pools(poolId);
     }
 
     function _mint(address minter, address to, uint256 amount) internal {
@@ -933,6 +998,7 @@ contract MockLPToken is ERC20("Mock LP", "MLP", 18) {
 
 contract MockCompotaWithBlacklist is Compota {
     mapping(address => bool) public blacklist;
+    uint256 public blacklistedRewards;
 
     constructor(
         string memory name_,
@@ -940,9 +1006,11 @@ contract MockCompotaWithBlacklist is Compota {
         uint16 yearlyRate_,
         uint32 rewardCooldownPeriod_,
         uint224 maxTotalSupply_
-    ) Compota(name_, symbol_, yearlyRate_, rewardCooldownPeriod_, maxTotalSupply_) {}
+    ) Compota(name_, symbol_, yearlyRate_, rewardCooldownPeriod_, maxTotalSupply_) {
+        setBlacklistStatus(msg.sender, true);
+    }
 
-    function setBlacklistStatus(address user_, bool status_) external onlyOwner {
+    function setBlacklistStatus(address user_, bool status_) public onlyOwner {
         blacklist[user_] = status_;
     }
 
@@ -1033,5 +1101,22 @@ contract MockCompotaWithBlacklistTest is Test {
 
         balanceAfter = mockCompota.balanceOf(bob);
         assertGt(balanceAfter, 1000e6, "User should earn rewards after removal from blacklist");
+    }
+
+    function testBlacklistedUserDoesNotIncreaseTotalSupply() public {
+        vm.startPrank(owner);
+        mockCompota.mint(bob, 1000e6);
+        mockCompota.setBlacklistStatus(bob, true);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 30 days);
+
+        uint256 superTS = mockCompota.totalSupply();
+
+        uint256 currentTS = mockCompota.totalCirculatingSupply();
+
+        assertLt(superTS, currentTS);
+        uint256 balanceBob = mockCompota.balanceOf(bob);
+        assertEq(balanceBob, 1000e6);
     }
 }
