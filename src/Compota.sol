@@ -335,10 +335,20 @@ contract Compota is ICompota, ERC20Extended, Owned {
         return maxTotalSupply;
     }
 
+    /**
+     * @notice Returns the total number of staking pools available in the contract.
+     * @dev The count is determined by the length of the `pools` array.
+     * @return The total number of staking pools.
+     */
     function getPoolCounts() external view returns (uint256) {
         return pools.length;
     }
 
+    /**
+     * @notice Returns the total number of active stakers currently participating in the staking system.
+     * @dev The count is determined by the length of the `activeStakers` array.
+     * @return The total number of active stakers.
+     */
     function getActiveStakerCounts() external view returns (uint256) {
         return activeStakers.length;
     }
