@@ -689,8 +689,11 @@ contract Compota is ICompota, ERC20Extended, Owned {
     ) internal view returns (uint256) {
         uint256 totalStakingRewards = 0;
         uint256 poolLength = pools.length;
-        for (uint256 i = 0; i < poolLength; i++) {
-            totalStakingRewards += _calculatePoolPendingStakingRewards(i, account_, currentTimestamp_);
+        for (uint256 poolId = 0; poolId < poolLength; poolId++) {
+            if (!pools[poolId].active) {
+                continue;
+            }
+            totalStakingRewards += _calculatePoolPendingStakingRewards(poolId, account_, currentTimestamp_);
         }
         return totalStakingRewards;
     }
@@ -781,6 +784,9 @@ contract Compota is ICompota, ERC20Extended, Owned {
         for (uint256 i = 0; i < activeStakersLength; i++) {
             address staker = activeStakers[i];
             for (uint256 poolId = 0; poolId < poolsLength; poolId++) {
+                if (!pools[poolId].active) {
+                    continue;
+                }
                 totalStakingRewards += _calculatePoolPendingStakingRewards(poolId, staker, timestamp);
             }
         }

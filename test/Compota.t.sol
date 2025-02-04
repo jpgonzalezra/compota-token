@@ -743,6 +743,35 @@ contract CompotaTest is Test {
         assertEq(token.balanceOf(alice), expectedBalance, "Balance with base rewards mismatch");
     }
 
+    function testNoMoreRewardsAfterPoolIsDisabled() public {
+        // Mint LP tokens to Alice
+        vm.startPrank(owner);
+        lpToken1.mint(alice, LP_AMOUNT);
+        token.addStakingPool(address(lpToken1), MULTIPLIER_MAX, TIME_THRESHOLD);
+
+        // Alice stakes LP tokens
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), LP_AMOUNT);
+        token.stakeLiquidity(0, LP_AMOUNT);
+        vm.stopPrank();
+
+        vm.startPrank(owner);
+
+        token.disableStakingPool(0);
+        vm.stopPrank();
+        vm.startPrank(alice);
+
+        // Warp time to simulate staking rewards accrual
+        vm.warp(block.timestamp + 180 days);
+
+        // Set reserves for LP token
+        lpToken1.setReserves(1_000_000e6, 10_000 ether);
+
+        // Verify balance includes staking rewards
+        uint256 actualBalance = token.balanceOf(alice);
+        assertEq(actualBalance, 0, "Balance with staking rewards mismatch");
+    }
+
     function testBalanceOfWithStakingRewards() public {
         // Mint LP tokens to Alice
         vm.startPrank(owner);
