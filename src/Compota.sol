@@ -207,7 +207,9 @@ contract Compota is ICompota, ERC20Extended, Owned {
             stakeInfo.accumulatedLpBalancePerTime = 0;
             stakeInfo.lastStakeUpdateTimestamp = 0;
             stakeInfo.lpStakeStartTimestamp = 0;
-            _removeActiveStaker(caller);
+            if (!_hasAnyActiveStake(caller)) {
+                _removeActiveStaker(caller);
+            }
         }
 
         IERC20(pools[poolId_].lpToken).transfer(caller, amount_);
@@ -431,6 +433,20 @@ contract Compota is ICompota, ERC20Extended, Owned {
     }
 
     /* ============ Internal Interactive Functions ============ */
+
+    /**
+     * @notice Checks if the given user still has tokens staked in at least one of the pools.
+     * @param user The address of the user to be queried.
+     * @return A boolean indicating whether the user has an active stake in at least one pool.
+     */
+    function _hasAnyActiveStake(address user) internal view returns (bool) {
+        for (uint256 i = 0; i < pools.length; i++) {
+            if (stakes[i][user].lpBalanceStaked > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /**
      * @dev Internal function that removes a user from the active stakers list once fully unstaked.
