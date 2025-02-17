@@ -685,6 +685,44 @@ contract CompotaTest is Test {
         token.unstakeLiquidity(0, 100e6);
     }
 
+    function testStakeInTwoPoolsThenUnstakeAll() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        token.addStakingPool(address(lpToken2), 3e6, 180 days);
+        vm.stopPrank();
+
+        lpToken1.mint(alice, 1000e6);
+        lpToken2.mint(alice, 1000e6);
+
+        vm.startPrank(alice);
+
+        lpToken1.approve(address(token), 1000e6);
+        token.stakeLiquidity(0, 300e6);
+
+        lpToken2.approve(address(token), 1000e6);
+        token.stakeLiquidity(1, 400e6);
+
+        vm.stopPrank();
+
+        (, uint224 staked0, , , ) = token.stakes(0, alice);
+        (, uint224 staked1, , , ) = token.stakes(1, alice);
+
+        assertEq(staked0, 300e6);
+        assertEq(staked1, 400e6);
+
+        vm.startPrank(alice);
+
+        assertEq(token.getActiveStakerCounts(), 1, "first unstakeLiquidity");
+        token.unstakeLiquidity(0, 300e6);
+
+        assertEq(token.getActiveStakerCounts(), 1, "second unstakeLiquidity");
+        token.unstakeLiquidity(1, 400e6);
+
+        vm.stopPrank();
+
+        assertEq(token.getActiveStakerCounts(), 0);
+    }
+
     function testAddStakingPoolInvalidMultiplierMax() public {
         vm.prank(owner);
         vm.expectRevert(ICompota.InvalidMultiplierMax.selector);
@@ -741,6 +779,35 @@ contract CompotaTest is Test {
 
         // Verify balance includes base rewards
         assertEq(token.balanceOf(alice), expectedBalance, "Balance with base rewards mismatch");
+    }
+
+    function testNoMoreRewardsAfterPoolIsDisabled() public {
+        // Mint LP tokens to Alice
+        vm.startPrank(owner);
+        lpToken1.mint(alice, LP_AMOUNT);
+        token.addStakingPool(address(lpToken1), MULTIPLIER_MAX, TIME_THRESHOLD);
+
+        // Alice stakes LP tokens
+        vm.startPrank(alice);
+        lpToken1.approve(address(token), LP_AMOUNT);
+        token.stakeLiquidity(0, LP_AMOUNT);
+        vm.stopPrank();
+
+        vm.startPrank(owner);
+
+        token.disableStakingPool(0);
+        vm.stopPrank();
+        vm.startPrank(alice);
+
+        // Warp time to simulate staking rewards accrual
+        vm.warp(block.timestamp + 180 days);
+
+        // Set reserves for LP token
+        lpToken1.setReserves(1_000_000e6, 10_000 ether);
+
+        // Verify balance includes staking rewards
+        uint256 actualBalance = token.balanceOf(alice);
+        assertEq(actualBalance, 0, "Balance with staking rewards mismatch");
     }
 
     function testBalanceOfWithStakingRewards() public {
