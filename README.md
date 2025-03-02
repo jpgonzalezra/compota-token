@@ -6,6 +6,9 @@
 
 The system also introduces key features such as **configurable interest rate bounds**, a **reward cooldown** to prevent **excessive compounding**, a **maximum total supply cap**, **multi-pool** staking, and thorough **ownership** controls. This README explains every novel element, mathematical underpinning, usage flow, and test coverage in great detail.
 
+> [!WARNING]
+> It's a PoC and not audited. I **do not give any warranties** and **will not be liable for any losses** incurred through any use of this code base. 
+
 ---
 
 ## Table of Contents
