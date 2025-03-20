@@ -7,8 +7,33 @@ import { ICompota } from "../src/interfaces/ICompota.sol";
 import { ERC20 } from "solmate/tokens/ERC20.sol";
 import { IUniswapV2Pair } from "../src/interfaces/IUniswapV2Pair.sol";
 
+contract CompotaMock is Compota {
+    constructor(
+        string memory name_,
+        string memory symbol_,
+        uint16 yearlyRate_,
+        uint32 rewardCooldownPeriod_,
+        uint224 maxTotalSupply_
+    ) Compota(name_, symbol_, yearlyRate_, rewardCooldownPeriod_, maxTotalSupply_) {}
+
+    function mint(address to_, uint256 amount_) external onlyOwner {
+        _revertIfInvalidRecipient(to_);
+        _revertIfZeroAmount(amount_);
+        _updateRewardsWithoutCooldown(to_, uint32(block.timestamp));
+        _mint(to_, amount_);
+    }
+}
+
+contract EmptyMockContract {}
+
+contract MockSmartWallet {
+    function isValidSignature(bytes32, bytes memory) external pure returns (bytes4) {
+        return 0x1626ba7e;
+    }
+}
+
 contract CompotaTest is Test {
-    Compota token;
+    CompotaMock token;
     address owner = address(1);
     address alice = address(2);
     address bob = address(3);
@@ -27,7 +52,7 @@ contract CompotaTest is Test {
 
     function setUp() external {
         vm.prank(owner);
-        token = new Compota("Compota Token", "COMPOTA", INTEREST_RATE, 1 days, 1_000_000_000e6);
+        token = new CompotaMock("Compota Token Mock", "COMPOTA Mock", INTEREST_RATE, 1 days, 1_000_000_000e6);
         lpToken1 = new MockLPToken(
             address(token),
             address(0) // ETH as token1
@@ -40,8 +65,8 @@ contract CompotaTest is Test {
 
     function testInitialization() external view {
         assertEq(token.owner(), owner);
-        assertEq(token.name(), "Compota Token");
-        assertEq(token.symbol(), "COMPOTA");
+        assertEq(token.name(), "Compota Token Mock");
+        assertEq(token.symbol(), "COMPOTA Mock");
         assertEq(token.yearlyRate(), 1e3);
         assertEq(token.rewardCooldownPeriod(), 1 days);
     }
@@ -72,6 +97,44 @@ contract CompotaTest is Test {
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(IERC20Extended.InvalidRecipient.selector, address(0)));
         token.transfer(address(0), 50e6);
+    }
+
+    function testTransferToContractNoRewards() public {
+        EmptyMockContract contractRecipient = new EmptyMockContract();
+        address to = address(contractRecipient);
+
+        uint256 mintAmount = 1000 * 10e6;
+        _mint(owner, alice, mintAmount);
+
+        uint256 rewardsBefore = token.getUserTotalRewards(to);
+        vm.warp(block.timestamp + 10 days);
+
+        vm.prank(alice);
+        token.transfer(to, 500 * 10e6);
+
+        vm.warp(block.timestamp + 10 days);
+        uint256 rewardsAfter = token.getUserTotalRewards(to);
+
+        assertEq(token.balanceOf(to), 500 * 10e6, "Balance should update correctly");
+        assertEq(rewardsAfter, rewardsBefore, "Contracts should not receive rewards");
+    }
+
+    function testTransferToSmartWalletWithRewards() public {
+        MockSmartWallet contractRecipient = new MockSmartWallet();
+        address to = address(contractRecipient);
+
+        uint256 mintAmount = 1000 * 10e6;
+        _mint(owner, alice, mintAmount);
+
+        uint256 rewardsBefore = token.getUserTotalRewards(to);
+
+        vm.prank(alice);
+        token.transfer(to, 500 * 10e6);
+
+        vm.warp(block.timestamp + 10 days);
+        uint256 rewardsAfter = token.getUserTotalRewards(to);
+
+        assertGt(rewardsAfter, rewardsBefore, "Smart wallets should receive rewards");
     }
 
     function testMintingByOwner() external {
@@ -259,16 +322,16 @@ contract CompotaTest is Test {
     }
 
     function testConstructorInitializesYearlyRate() public {
-        Compota newToken = new Compota("Compota Token", "COMPOTA", 500, 1 days, 1_000_000_000e6);
+        Compota newToken = new CompotaMock("Compota Token Mock", "COMPOTA", 500, 1 days, 1_000_000_000e6);
         assertEq(newToken.yearlyRate(), 500);
     }
 
     function testConstructorRevertsOnInvalidYearlyRate() public {
         vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidYearlyRate.selector, 0));
-        new Compota("Compota Token", "COMPOTA", 0, 1 days, 1_000_000_000e6);
+        new CompotaMock("Compota Token Mock", "COMPOTA", 0, 1 days, 1_000_000_000e6);
 
         vm.expectRevert(abi.encodeWithSelector(ICompota.InvalidYearlyRate.selector, 50000));
-        new Compota("Compota Token", "COMPOTA", 50000, 1 days, 1_000_000_000e6);
+        new CompotaMock("Compota Token Mock", "COMPOTA", 50000, 1 days, 1_000_000_000e6);
     }
 
     function testInterestAccumulationAfterTransfer() external {
@@ -431,7 +494,7 @@ contract CompotaTest is Test {
     function testMintCannotExceedMaxTotalSupply() public {
         uint224 maxSupply = 1_000_000 * 10e6;
         vm.prank(owner);
-        token = new Compota("Compota Token", "COMPOTA", INTEREST_RATE, 1 days, maxSupply);
+        token = new CompotaMock("Compota Token Mock", "COMPOTA", INTEREST_RATE, 1 days, maxSupply);
 
         uint256 mintable = 900_000 * 10e6;
         _mint(owner, alice, mintable);
@@ -449,7 +512,7 @@ contract CompotaTest is Test {
     function testMintPartialWhenNearMaxTotalSupply() public {
         uint224 maxSupply = 1_000_000 * 10e6;
         vm.prank(owner);
-        token = new Compota("Compota Token", "COMPOTA", INTEREST_RATE, 1 days, maxSupply);
+        token = new CompotaMock("Compota Token Mock", "COMPOTA", INTEREST_RATE, 1 days, maxSupply);
 
         uint256 mintable = 999_999 * 10e6;
         _mint(owner, alice, mintable);
@@ -466,7 +529,7 @@ contract CompotaTest is Test {
     function testInterestAccrualRespectsMaxTotalSupply() external {
         uint224 maxSupply = 600 * 10e6;
         vm.prank(owner);
-        token = new Compota("Compota Token", "COMPOTA", INTEREST_RATE, 1 days, maxSupply);
+        token = new CompotaMock("Compota Token Mock", "COMPOTA", INTEREST_RATE, 1 days, maxSupply);
 
         uint256 initialMint = 300 * 10e6;
         _mint(owner, alice, initialMint);
@@ -909,7 +972,7 @@ contract CompotaTest is Test {
     function testCalculateRewardsWhenAlreadyAtMaxSupply() external {
         uint224 localMaxSupply = 1000e6;
         vm.prank(owner);
-        Compota tinyToken = new Compota("Tiny Token", "TINY", INTEREST_RATE, 1 days, localMaxSupply);
+        CompotaMock tinyToken = new CompotaMock("Tiny Token", "TINY", INTEREST_RATE, 1 days, localMaxSupply);
 
         vm.prank(owner);
         tinyToken.mint(alice, 1000e6);
@@ -1008,6 +1071,43 @@ contract CompotaTest is Test {
         vm.stopPrank();
     }
 
+    function testEnableStakingPool() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        token.disableStakingPool(0);
+        vm.stopPrank();
+
+        (, , , bool isActiveBefore) = token.pools(0);
+        assertFalse(isActiveBefore, "Pool should be inactive before reactivation");
+
+        vm.startPrank(owner);
+        vm.expectEmit(true, false, false, true);
+        emit ICompota.StakingPoolEnabled(0);
+        token.enableStakingPool(0);
+        vm.stopPrank();
+
+        (, , , bool isActiveAfter) = token.pools(0);
+        assertTrue(isActiveAfter, "Pool should be active after reactivation");
+    }
+
+    function testEnableStakingPoolAlreadyActiveReverts() external {
+        vm.startPrank(owner);
+        token.addStakingPool(address(lpToken1), 2e6, 365 days);
+        vm.stopPrank();
+
+        vm.startPrank(owner);
+        vm.expectRevert(ICompota.PoolAlreadyActive.selector);
+        token.enableStakingPool(0);
+        vm.stopPrank();
+    }
+
+    function testEnableStakingPoolInvalidIdReverts() external {
+        vm.startPrank(owner);
+        vm.expectRevert(ICompota.InvalidPoolId.selector);
+        token.enableStakingPool(999);
+        vm.stopPrank();
+    }
+
     /* ============ Helper functions ============ */
 
     function getPoolData(
@@ -1060,130 +1160,5 @@ contract MockLPToken is ERC20("Mock LP", "MLP", 18) {
 
     function getReserves() external view returns (uint112, uint112, uint32) {
         return (reserve0, reserve1, 0);
-    }
-}
-
-contract MockCompotaWithBlacklist is Compota {
-    mapping(address => bool) public blacklist;
-    uint256 public blacklistedRewards;
-
-    constructor(
-        string memory name_,
-        string memory symbol_,
-        uint16 yearlyRate_,
-        uint32 rewardCooldownPeriod_,
-        uint224 maxTotalSupply_
-    ) Compota(name_, symbol_, yearlyRate_, rewardCooldownPeriod_, maxTotalSupply_) {
-        setBlacklistStatus(msg.sender, true);
-    }
-
-    function setBlacklistStatus(address user_, bool status_) public onlyOwner {
-        blacklist[user_] = status_;
-    }
-
-    function _updateRewards(address accountAddress_) internal override {
-        if (blacklist[accountAddress_]) {
-            return;
-        }
-        super._updateRewards(accountAddress_);
-    }
-
-    function _updateRewardsWithoutCooldown(address accountAddress_, uint32 timestamp_) internal override {
-        if (blacklist[accountAddress_]) {
-            return;
-        }
-        super._updateRewardsWithoutCooldown(accountAddress_, timestamp_);
-    }
-
-    function balanceOf(address accountAddress_) external view override returns (uint256) {
-        if (blacklist[accountAddress_]) {
-            return _balances[accountAddress_].value;
-        }
-        uint32 timestamp = uint32(block.timestamp);
-        return
-            _balances[accountAddress_].value +
-            super._calculatePendingBaseRewards(accountAddress_, timestamp) +
-            super._calculatePendingStakingRewards(accountAddress_, timestamp);
-    }
-}
-
-contract MockCompotaWithBlacklistTest is Test {
-    MockCompotaWithBlacklist internal mockCompota;
-
-    address internal owner = address(11);
-    address internal alice = address(12);
-    address internal bob = address(13);
-
-    function setUp() public {
-        // Prank as the owner during deployment.
-        vm.startPrank(owner);
-        mockCompota = new MockCompotaWithBlacklist(
-            "Compota With Blacklist",
-            "CWB",
-            1000, // 10% APY, for example
-            3600, // 1 hour reward cooldown
-            1_000_000_000e6 // maxTotalSupply, e.g., 1,000,000,000
-        );
-        vm.stopPrank();
-    }
-
-    function testBlacklistedUserDoesNotEarnRewards() public {
-        vm.startPrank(owner);
-        mockCompota.mint(bob, 1000e6);
-        mockCompota.setBlacklistStatus(bob, true);
-        vm.stopPrank();
-
-        vm.warp(block.timestamp + 1 days);
-
-        vm.startPrank(bob);
-        mockCompota.claimRewards();
-        vm.stopPrank();
-
-        uint256 balanceAfter = mockCompota.balanceOf(bob);
-        assertEq(balanceAfter, 1000e6, "Blacklisted user should NOT earn rewards");
-    }
-
-    function testRemovingUserFromBlacklist() public {
-        vm.startPrank(owner);
-        mockCompota.mint(bob, 1000e6);
-        mockCompota.setBlacklistStatus(bob, true);
-        vm.stopPrank();
-
-        vm.warp(block.timestamp + 1 days);
-        vm.startPrank(bob);
-        mockCompota.claimRewards();
-        vm.stopPrank();
-
-        uint256 balanceAfter = mockCompota.balanceOf(bob);
-        assertEq(balanceAfter, 1000e6, "User is blacklisted, no rewards");
-
-        vm.startPrank(owner);
-        mockCompota.setBlacklistStatus(bob, false);
-        vm.stopPrank();
-
-        vm.warp(block.timestamp + 1 days);
-        vm.startPrank(bob);
-        mockCompota.claimRewards();
-        vm.stopPrank();
-
-        balanceAfter = mockCompota.balanceOf(bob);
-        assertGt(balanceAfter, 1000e6, "User should earn rewards after removal from blacklist");
-    }
-
-    function testBlacklistedUserDoesNotIncreaseTotalSupply() public {
-        vm.startPrank(owner);
-        mockCompota.mint(bob, 1000e6);
-        mockCompota.setBlacklistStatus(bob, true);
-        vm.stopPrank();
-
-        vm.warp(block.timestamp + 30 days);
-
-        uint256 superTS = mockCompota.totalSupply();
-
-        uint256 currentTS = mockCompota.totalCirculatingSupply();
-
-        assertLt(superTS, currentTS);
-        uint256 balanceBob = mockCompota.balanceOf(bob);
-        assertEq(balanceBob, 1000e6);
     }
 }

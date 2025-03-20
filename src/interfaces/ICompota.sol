@@ -8,6 +8,22 @@ interface ICompota is IERC20Extended {
     /* ============ Events ============ */
 
     /**
+     * @notice Emitted when a user stakes liquidity in a pool.
+     * @param user The address of the user staking liquidity.
+     * @param poolId The ID of the staking pool.
+     * @param amount The amount of LP tokens staked.
+     */
+    event Staked(address indexed user, uint256 indexed poolId, uint256 amount);
+
+    /**
+     * @notice Emitted when a user unstakes liquidity from a pool.
+     * @param user The address of the user unstaking liquidity.
+     * @param poolId The ID of the staking pool.
+     * @param amount The amount of LP tokens unstaked.
+     */
+    event Unstaked(address indexed user, uint256 indexed poolId, uint256 amount);
+
+    /**
      * @notice Emmited when the account starts earning token
      * @param  account The account that started earning.
      */
@@ -35,10 +51,31 @@ interface ICompota is IERC20Extended {
     event MinterTransferred(address indexed oldMinter, address indexed newMinter);
 
     /**
+     * @notice Emitted when a new staking pool is added.
+     * @param lpToken The address of the LP token associated with the pool.
+     * @param multiplierMax The maximum staking multiplier (scaled by 1e6).
+     * @param timeThreshold The minimum staking duration required to reach the max multiplier.
+     */
+    event StakingPoolAdded(address indexed lpToken, uint32 multiplierMax, uint32 timeThreshold);
+
+    /**
      * @notice Emitted when a staking pool is disabled (deactivated).
      * @param poolId The ID of the staking pool that was disabled.
      */
     event StakingPoolDisabled(uint256 indexed poolId);
+
+    /**
+     * @notice Emitted when a staking pool is reactivated.
+     * @param poolId The ID of the reactivated staking pool.
+     */
+    event StakingPoolEnabled(uint256 indexed poolId);
+
+    /**
+     * @notice Emitted when a user's rewards are updated.
+     * @param user The address of the user whose rewards were updated.
+     * @param newBalance The new total balance of the user, including accrued rewards.
+     */
+    event RewardsUpdated(address indexed user, uint256 newBalance);
 
     /* ============ Custom Errors ============ */
 
@@ -47,6 +84,9 @@ interface ICompota is IERC20Extended {
 
     /// @notice Emitted when attempting to disable a pool that is already inactive.
     error PoolAlreadyInactive();
+
+    /// @notice Thrown when attempting to enable a staking pool that is already active.
+    error PoolAlreadyActive();
 
     /// @notice Emitted when the yearly rate is invalid.
     error InvalidYearlyRate(uint16 rate);
@@ -66,24 +106,22 @@ interface ICompota is IERC20Extended {
     /// @notice Emitted when a function is called by an address that is not authorized to perform the action.
     error Unauthorized();
 
-    /**
-     * @notice Thrown when adding a new staking pool with a multiplierMax value below 1e6 or otherwise invalid.
-     */
+    /// @notice Thrown when attempting to add a staking pool with an LP token that already exists.
+    error PoolAlreadyExists(address lpToken);
+
+    /// @notice Thrown when the provided LP token address is invalid.
+    error InvalidLpToken(address lpToken);
+
+    /// @notice Thrown when adding a new staking pool with a multiplierMax value below 1e6 or otherwise invalid.
     error InvalidMultiplierMax();
 
-    /**
-     * @notice Thrown when adding a new staking pool with a zero or otherwise invalid time threshold.
-     */
+    /// @notice Thrown when adding a new staking pool with a zero or otherwise invalid time threshold.
     error InvalidTimeThreshold();
 
-    /**
-     * @notice Thrown when an operation requires the sender to have an active stake, but none is found.
-     */
+    /// @notice Thrown when an operation requires the sender to have an active stake, but none is found.
     error NotStaker();
 
-    /**
-     * @notice Thrown when trying to unstake an amount that exceeds the user's currently staked balance.
-     */
+    /// @notice Thrown when trying to unstake an amount that exceeds the user's currently staked balance.
     error NotEnoughStaked();
 
     /* ============ Interactive Functions ============ */
@@ -95,14 +133,6 @@ interface ICompota is IERC20Extended {
      * @param newRate_ The new interest rate in basis points (BPS).
      */
     function setYearlyRate(uint16 newRate_) external;
-
-    /**
-     * @notice Mints new tokens to a specified address.
-     * @dev Only the owner can call this function.
-     * @param to_ The address where the new tokens will be sent.
-     * @param amount_ The number of tokens to mint.
-     */
-    function mint(address to_, uint256 amount_) external;
 
     /**
      * @notice Burns tokens from the sender account.
