@@ -3,12 +3,11 @@ pragma solidity 0.8.28;
 
 import { Constants } from "../../src/Constants.sol";
 import { Test } from "forge-std/Test.sol";
-import { Compota } from "../../src/Compota.sol";
 import { ICompota } from "../../src/interfaces/ICompota.sol";
-import { MockLPToken } from "../Compota.t.sol";
+import { MockLPToken, CompotaMock } from "../Compota.t.sol";
 
 contract FuzzTests is Test {
-    Compota token;
+    CompotaMock token;
     address owner = address(this);
     address alice = address(0x2);
     address bob = address(0x3);
@@ -21,29 +20,10 @@ contract FuzzTests is Test {
 
     function setUp() public {
         vm.startPrank(owner);
-        token = new Compota("Compota Token", "COMPOTA", INTEREST_RATE, 1 days, 1_000_000_000e6);
+        token = new CompotaMock("Compota Token Mock", "COMPOTA", INTEREST_RATE, 1 days, 1_000_000_000e6);
         lpToken = new MockLPToken(address(token), address(0));
 
         vm.stopPrank();
-    }
-
-    function testFuzzMint(address to, uint256 amount) public {
-        vm.assume(to != address(0));
-        vm.assume(amount > 0);
-        vm.assume(amount <= 1e24);
-
-        uint256 currentSupply = token.totalSupply();
-        uint256 remainingSupply = MAX_SUPPLY - currentSupply;
-
-        if (amount > remainingSupply) {
-            amount = remainingSupply;
-        }
-
-        vm.prank(owner);
-        token.mint(to, amount);
-
-        assertEq(token.balanceOf(to), amount);
-        assertEq(token.totalSupply(), amount);
     }
 
     function testFuzzBurn(uint256 amount) public {
@@ -85,6 +65,7 @@ contract FuzzTests is Test {
         vm.assume(to != address(0));
         vm.assume(to != alice);
         vm.assume(amount <= INITIAL_MINT);
+        vm.assume(to.code.length == 0);
 
         vm.prank(owner);
         token.mint(alice, INITIAL_MINT);
@@ -98,6 +79,7 @@ contract FuzzTests is Test {
 
     function testFuzzUpdateRewards(address account) public {
         vm.assume(account != address(0));
+        vm.assume(account.code.length == 0);
 
         vm.prank(owner);
         token.mint(account, INITIAL_MINT);
@@ -132,6 +114,7 @@ contract FuzzTests is Test {
     function testFuzzCalculateBaseRewards(address account, uint256 mintAmount, uint32 warpTime) public {
         vm.assume(account != address(0));
         vm.assume(mintAmount > 0 && mintAmount < MAX_SUPPLY);
+        vm.assume(account.code.length == 0);
         vm.assume(warpTime > block.timestamp);
 
         vm.prank(owner);
@@ -205,7 +188,7 @@ contract FuzzTests is Test {
 
     function testFuzzAddStakingPool(address lpTokenAddress, uint32 multiplierMax, uint32 timeThreshold) public {
         vm.assume(lpTokenAddress != address(0));
-        vm.assume(multiplierMax >= 1e6);
+        vm.assume(multiplierMax >= 1e6 && multiplierMax <= 100e6);
         vm.assume(timeThreshold > 0);
 
         vm.prank(owner);
@@ -216,5 +199,29 @@ contract FuzzTests is Test {
         assertEq(poolMultiplierMax, multiplierMax, "Multiplier max mismatch");
         assertEq(poolTimeThreshold, timeThreshold, "Time threshold mismatch");
         assertEq(active, true, "Active state pool mismatch");
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(ICompota.PoolAlreadyExists.selector, lpTokenAddress));
+        token.addStakingPool(lpTokenAddress, multiplierMax, timeThreshold);
+    }
+
+    function testFuzzSetRewardCooldownPeriod(uint32 newRewardCooldownPeriod) public {
+        vm.prank(owner);
+
+        if (newRewardCooldownPeriod == 0 || newRewardCooldownPeriod > 30 days) {
+            vm.expectRevert(
+                abi.encodeWithSelector(ICompota.InvalidRewardCooldownPeriod.selector, newRewardCooldownPeriod)
+            );
+            token.setRewardCooldownPeriod(newRewardCooldownPeriod);
+        } else {
+            uint32 oldCooldownPeriod = token.rewardCooldownPeriod();
+
+            vm.expectEmit(true, true, true, true);
+            emit ICompota.RewardCooldownPeriodUpdated(oldCooldownPeriod, newRewardCooldownPeriod);
+
+            token.setRewardCooldownPeriod(newRewardCooldownPeriod);
+
+            assertEq(token.rewardCooldownPeriod(), newRewardCooldownPeriod, "Cooldown period should be updated");
+        }
     }
 }

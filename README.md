@@ -1,42 +1,43 @@
 # Compota
 
 **Compota** is an ERC20 token designed to **continuously** accrue rewards for its holders. These rewards come in two main forms:
-1. **Base Rewards**: Simply holding the token yields automatically accruing interest over time.  
+
+1. **Base Rewards**: Simply holding the token yields automatically accruing interest over time.
 2. **Staking Rewards**: Staking **Uniswap V2-compatible** liquidity pool (LP) tokens for additional yield, boosted by a **time-based cubic multiplier** applied to the staking rewards formula.
 
 The system also introduces key features such as **configurable interest rate bounds**, a **reward cooldown** to prevent **excessive compounding**, a **maximum total supply cap**, **multi-pool** staking, and thorough **ownership** controls. This README explains every novel element, mathematical underpinning, usage flow, and test coverage in great detail.
 
 > [!WARNING]
-> It's a PoC and not audited. I **do not give any warranties** and **will not be liable for any losses** incurred through any use of this code base. 
+> It's a PoC and not audited. I **do not give any warranties** and **will not be liable for any losses** incurred through any use of this code base.
 
 ---
 
 ## Table of Contents
 
-1. [Conceptual Overview](#conceptual-overview)  
-2. [Feature Highlights](#feature-highlights)  
-3. [Contract Architecture](#contract-architecture)  
-4. [Mathematical Foundations of Rewards](#mathematical-foundations-of-rewards)  
-   - [Base Rewards](#base-rewards)  
-   - [Staking Rewards](#staking-rewards)  
-   - [Cubic Multiplier](#cubic-multiplier)  
-   - [Average Balance & Accumulated Balance Per Time](#average-balance--accumulated-balance-per-time)  
-5. [Implementation Details](#implementation-details)  
-   - [Multi-Pool Support](#multi-pool-support)  
-   - [Min/Max Yearly Rate](#minmax-yearly-rate)  
-   - [Reward Cooldown](#reward-cooldown)  
-   - [Max Total Supply Constraint](#max-total-supply-constraint)  
-   - [Global vs. User-Specific Reward Updates](#global-vs-user-specific-reward-updates)  
-   - [Active Stakers Management](#active-stakers-management)  
-   - [Precision & Overflow Protection](#precision--overflow-protection)  
-   - [Custom Errors & Event Emissions](#custom-errors--event-emissions)  
-6. [Why Uniswap V2?](#why-uniswap-v2)  
-7. [Ownership & Access Control](#ownership--access-control)  
-8. [Overridden ERC20 Methods](#overridden-erc20-methods) 
-9. [API Reference & Methods](#api-reference--methods)  
-   - [ICompota Interface](#icompota-interface)  
-   - [Additional Public/External Functions](#additional-publicexternal-functions)   
-10. [Security & Audit Considerations](#security--audit-considerations)  
+1. [Conceptual Overview](#conceptual-overview)
+2. [Feature Highlights](#feature-highlights)
+3. [Contract Architecture](#contract-architecture)
+4. [Mathematical Foundations of Rewards](#mathematical-foundations-of-rewards)
+   - [Base Rewards](#base-rewards)
+   - [Staking Rewards](#staking-rewards)
+   - [Cubic Multiplier](#cubic-multiplier)
+   - [Average Balance & Accumulated Balance Per Time](#average-balance--accumulated-balance-per-time)
+5. [Implementation Details](#implementation-details)
+   - [Multi-Pool Support](#multi-pool-support)
+   - [Min/Max Yearly Rate](#minmax-yearly-rate)
+   - [Reward Cooldown](#reward-cooldown)
+   - [Max Total Supply Constraint](#max-total-supply-constraint)
+   - [Global vs. User-Specific Reward Updates](#global-vs-user-specific-reward-updates)
+   - [Active Stakers Management](#active-stakers-management)
+   - [Precision & Overflow Protection](#precision--overflow-protection)
+   - [Custom Errors & Event Emissions](#custom-errors--event-emissions)
+6. [Why Uniswap V2?](#why-uniswap-v2)
+7. [Ownership & Access Control](#ownership--access-control)
+8. [Overridden ERC20 Methods](#overridden-erc20-methods)
+9. [API Reference & Methods](#api-reference--methods)
+   - [ICompota Interface](#icompota-interface)
+   - [Additional Public/External Functions](#additional-publicexternal-functions)
+10. [Security & Audit Considerations](#security--audit-considerations)
 11. [License](#license)
 
 ---
@@ -49,31 +50,33 @@ The system also introduces key features such as **configurable interest rate bou
 
 ## Feature Highlights
 
-1. **Continuous Accrual**: Rewards accumulate over time, without constant user claims.  
-2. **Cubic Multiplier**: Novel time-based booster for stakers, culminating in higher returns for longer durations.  
-3. **Multi-Pool Staking**: Supports multiple LP tokens, each with distinct parameters.  
-4. **Configurable Rate Bounds**: An **owner** can adjust the yearlyRate (APR in BPS) within `[MIN_YEARLY_RATE, MAX_YEARLY_RATE]`.  
-5. **Reward Cooldown**: Users must wait a specified period to claim new rewards, preventing **over-compounding**.  
-6. **Max Total Supply**: Prevents unbounded inflation.  
+1. **Continuous Accrual**: Rewards accumulate over time, without constant user claims.
+2. **Cubic Multiplier**: Novel time-based booster for stakers, culminating in higher returns for longer durations.
+3. **Multi-Pool Staking**: Supports multiple LP tokens, each with distinct parameters.
+4. **Configurable Rate Bounds**: An **owner** can adjust the yearlyRate (APR in BPS) within `[MIN_YEARLY_RATE, MAX_YEARLY_RATE]`.
+5. **Reward Cooldown**: Users must wait a specified period to claim new rewards, preventing **over-compounding**.
+6. **Max Total Supply**: Prevents unbounded inflation.
 
 ---
 
 ## Contract Architecture
 
 `Compota` inherits from:
+
 - **ERC20Extended**: A standard token interface (with 6 decimals) plus minor utility methods:
-   - We use the **[M0 standard ERC20Extended](https://github.com/m0-foundation/common/blob/main/src/ERC20Extended.sol)** because it incorporates additional functionality beyond the standard ERC20, including EIP-2612 for signed approvals (via EIP-712, with compatibility for EIP-1271 and EIP-5267) and EIP-3009 for transfers with authorization (also using EIP-712). This makes the token more versatile and compatible with modern cryptographic signing standards, improving user experience and flexibility. 
+  - We use the **[M0 standard ERC20Extended](https://github.com/m0-foundation/common/blob/main/src/ERC20Extended.sol)** because it incorporates additional functionality beyond the standard ERC20, including EIP-2612 for signed approvals (via EIP-712, with compatibility for EIP-1271 and EIP-5267) and EIP-3009 for transfers with authorization (also using EIP-712). This makes the token more versatile and compatible with modern cryptographic signing standards, improving user experience and flexibility.
 - **Owned**: An ownership module from **Solmate** controlling certain admin functions.
 
 It interfaces with:
-- **ICompota**: The main external interface.  
-- **IERC20** 
+
+- **ICompota**: The main external interface.
+- **IERC20**
 - **IUniswapV2Pair**: For reading pool reserves (`getReserves()`) and identifying token addresses, ensuring **Uniswap v2** compatibility.
 
 **Data structures** central to the system:
 
-- **`AccountBalance`**: Tracks base holdings for each user.  
-- **`UserStake`**: Tracks staked LP and relevant timestamps.  
+- **`AccountBalance`**: Tracks base holdings for each user.
+- **`UserStake`**: Tracks staked LP and relevant timestamps.
 - **`StakingPool`**: Parameters for each pool, including `lpToken`, `multiplierMax`, `timeThreshold`.
 
 ---
@@ -84,13 +87,14 @@ It interfaces with:
 
 For **base rewards**, each address’s holding grows according to:
 
-**Δ_base = (avgBalance * elapsedTime * yearlyRate) / (SCALE_FACTOR * SECONDS_PER_YEAR)**
+**Δ_base = (avgBalance*elapsedTime*yearlyRate) / (SCALE_FACTOR\*SECONDS_PER_YEAR)**
 
-where:  
-- **avgBalance** is the user’s time-weighted average holdings,  
-- **elapsedTime** is the number of seconds since last update,  
-- **yearlyRate** is in BPS,  
-- **SCALE_FACTOR** = 10,000,  
+where:
+
+- **avgBalance** is the user’s time-weighted average holdings,
+- **elapsedTime** is the number of seconds since last update,
+- **yearlyRate** is in BPS,
+- **SCALE_FACTOR** = 10,000,
 - **SECONDS_PER_YEAR** = 31,536,000.
 
 ---
@@ -99,26 +103,27 @@ where:
 
 When **staking** an LP token, the user’s effective portion of `Compota` in the pool is determined by:
 
-**compotaPortion = (avgLpStaked * compotaReserve) / lpTotalSupply**
+**compotaPortion = (avgLpStaked \* compotaReserve) / lpTotalSupply**
 
 The staking reward itself (Δ_staking) applies the **cubic multiplier** in the final step:
 
-**Δ_staking = (compotaPortion * elapsedTime * yearlyRate) / (SCALE_FACTOR * SECONDS_PER_YEAR) * cubicMultiplier(t)**
+**Δ_staking = (compotaPortion*elapsedTime*yearlyRate) / (SCALE_FACTOR*SECONDS*PER_YEAR) \* cubicMultiplier(t)**
 
 ---
 
 ### Cubic Multiplier
 
 A core innovation is the **cubic multiplier** for staking. Let:
-- t = timeStaked  
-- timeThreshold  
+
+- t = timeStaked
+- timeThreshold
 - multiplierMax (scaled by 1e6)
 
 Then:
 
-**cubicMultiplier(t) = multiplierMax      if t >= timeThreshold**
+**cubicMultiplier(t) = multiplierMax if t >= timeThreshold**
 
-**cubicMultiplier(t) = 1*10^6 + (multiplierMax - 10^6) * (t / timeThreshold)^3      if t < timeThreshold**
+**cubicMultiplier(t) = 1*10^6 + (multiplierMax - 10^6) * (t / timeThreshold)^3 if t < timeThreshold**
 
 ---
 
@@ -130,7 +135,7 @@ To compute **average balance**, the contract uses **discrete integration** at ev
 
 1. Accumulate:
 
-**accumulatedBalancePerTime += (balance * (T_now - lastUpdateTimestamp))**
+**accumulatedBalancePerTime += (balance \* (T_now - lastUpdateTimestamp))**
 
 **lastUpdateTimestamp = T_now**
 
@@ -145,37 +150,45 @@ This yields a **time-weighted average** of how much the user held or staked.
 ## Implementation Details
 
 ### Multi-Pool Support
+
 - The contract holds an array of `StakingPool`.
 - Each pool has its own LP token, `multiplierMax`, and `timeThreshold`.
 - Each `StakingPool` also includes a boolean `active` field. By default, `active = true` for new pools. The contract owner can call `disableStakingPool(poolId_)` to set `active = false` on a specific pool, preventing any further staking but leaving existing stakes intact. When a pool is disabled, a `StakingPoolDisabled(poolId_)` event is emitted to inform off-chain services.
 - Users can stake/unstake by specifying `poolId`.
 
 ### Min/Max Yearly Rate
+
 - `MIN_YEARLY_RATE` and `MAX_YEARLY_RATE` define the allowable range.
 - Attempts to set `yearlyRate` outside this range revert.
 
 ### Reward Cooldown
+
 - A global `rewardCooldownPeriod` ensures a user cannot claim rewards too often, preventing **over-compounding**.
 - If a user attempts to claim before cooldown finishes, only their internal accounting is updated.
 
 ### Max Total Supply Constraint
+
 - Any token mint or reward mint cannot exceed `maxTotalSupply`.
 - If a reward calculation attempts to exceed the supply cap, it is truncated.
 
 ### Global vs. User-Specific Reward Updates
+
 - Maintains global timestamps plus user-specific data (`AccountBalance`, `UserStake`).
 - Ensures each user’s pending rewards are accurately tracked and minted only if cooldown passes.
 
 ### Active Stakers Management
+
 - Tracks stakers in an `activeStakers` array + `_activeStakerIndices` mapping.
 - Users are removed from the list when they fully unstake from all pools.
 
 ### Precision & Overflow Protection
+
 - Uses `uint224` to avoid overflow.
 - BPS calculations are scaled by `10,000`, multipliers by `1e6`.
 - Casting is checked with `toSafeUint224`.
 
 ### Custom Errors & Event Emissions
+
 - Custom errors like `InvalidYearlyRate`, `NotEnoughStaked`, `InsufficientAmount` give precise revert reasons.
 - Events like `YearlyRateUpdated`, `RewardCooldownPeriodUpdated` ensure transparency.
 - `StakingPoolDisabled(uint256 poolId)`: Emitted when the owner disables an active pool, blocking future staking in that pool.
@@ -209,8 +222,6 @@ By leveraging Uniswap V2 compatibility, Compota ensures a balance between curren
   - **Set `yearlyRate`**: Adjust the annual percentage yield within the min/max range.
   - **Set `rewardCooldownPeriod`**: Define the cooldown period for claiming rewards.
   - **Add staking pools**: Introduce new liquidity pool options with custom parameters.
-  - **Mint new tokens**: Create additional tokens, respecting the `maxTotalSupply` constraint.
-- Non-owners cannot perform these privileged actions.
 
 ---
 
@@ -218,24 +229,28 @@ By leveraging Uniswap V2 compatibility, Compota ensures a balance between curren
 
 The Compota contract customizes several standard ERC20 methods to incorporate rewards logic and enforce system constraints:
 
-1. **`balanceOf(address account)`**:  
+1. **`balanceOf(address account)`**:
+
    - For users who are **within** the reward cooldown (`timestamp - _latestClaimTimestamp[account] < rewardCooldownPeriod`), `balanceOf` returns only their already minted tokens (`_balances[account].value`) and **excludes** any unclaimed rewards. Once the cooldown has passed, `balanceOf` includes the dynamically computed base + staking rewards.
    - This ensures users see their effective balance at all times.
 
-2. **`totalSupply()`**:   
+2. **`totalSupply()`**:
+
    - `totalSupply()` reflects only **minted** tokens, excluding unclaimed rewards. For the **full** supply (minted tokens + unclaimed rewards), there is `totalCirculatingSupply()`, which sums all pending base and staking rewards.
    - Enforces the `maxTotalSupply` constraint.
 
-3. **`_transfer(address sender, address recipient, uint256 amount)`**:  
-   - Updates reward states for both the sender and the recipient before executing the token transfer.  
+3. **`_transfer(address sender, address recipient, uint256 amount)`**:
+
+   - Updates reward states for both the sender and the recipient before executing the token transfer.
    - Maintains accurate reward calculations for all involved parties.
 
-4. **`_mint(address to, uint256 amount)`**:  
-   - Ensures the `maxTotalSupply` constraint is respected during minting.  
+4. **`_mint(address to, uint256 amount)`**:
+
+   - Ensures the `maxTotalSupply` constraint is respected during minting.
    - Updates internal reward states when minting tokens.
 
-5. **`_burn(address from, uint256 amount)`**:  
-   - Verifies sufficient balance (including pending rewards) before burning tokens.  
+5. **`_burn(address from, uint256 amount)`**:
+   - Verifies sufficient balance (including pending rewards) before burning tokens.
    - Adjusts internal balances and the total supply accordingly.
 
 These overrides ensure that **reward logic and supply constraints** are seamlessly integrated into ERC20 operations without disrupting compatibility.
@@ -247,80 +262,78 @@ These overrides ensure that **reward logic and supply constraints** are seamless
 ### ICompota Interface
 
 1. **`setYearlyRate(uint16 newRate_)`**  
-Adjusts APY (BPS) within `[MIN_YEARLY_RATE, MAX_YEARLY_RATE]`.
+   Adjusts APY (BPS) within `[MIN_YEARLY_RATE, MAX_YEARLY_RATE]`.
 
 2. **`setRewardCooldownPeriod(uint32 newRewardCooldownPeriod_)`**  
-Changes the cooldown for claiming.
+   Changes the cooldown for claiming.
 
 3. **`addStakingPool(address lpToken_, uint32 multiplierMax_, uint32 timeThreshold_)`**  
-Introduces a new pool.
+   Introduces a new pool.
 
 4. **`stakeLiquidity(uint256 poolId_, uint256 amount_)`**  
-Stakes LP tokens in `poolId_`.
+   Stakes LP tokens in `poolId_`.
 
 5. **`unstakeLiquidity(uint256 poolId_, uint256 amount_)`**  
-Unstakes LP tokens from `poolId_`.
+   Unstakes LP tokens from `poolId_`.
 
-6. **`mint(address to_, uint256 amount_)`**  
-Owner-only. Respects `maxTotalSupply`.
+6. **`burn(uint256 amount_)`**  
+   Burns user’s tokens.
 
-7. **`burn(uint256 amount_)`**  
-Burns user’s tokens.
+7. **`balanceOf(address account_) returns (uint256)`**  
+   Current user balance + unclaimed rewards.
 
-8. **`balanceOf(address account_) returns (uint256)`**  
-Current user balance + unclaimed rewards.
+8. **`calculateBaseRewards(address account_, uint32 currentTimestamp_) returns (uint256)`**  
+   Helper function for base reward math.
 
-9. **`calculateBaseRewards(address account_, uint32 currentTimestamp_) returns (uint256)`**  
-Helper function for base reward math.
+9. **`calculateStakingRewards(address account_, uint32 currentTimestamp_) returns (uint256)`**  
+   Helper function for staking reward math.
 
-10. **`calculateStakingRewards(address account_, uint32 currentTimestamp_) returns (uint256)`**  
- Helper function for staking reward math.
+10. **`totalSupply() returns (uint256)`**  
+    Global supply including pending rewards.
 
-11. **`totalSupply() returns (uint256)`**  
- Global supply including pending rewards.
-
-12. **`claimRewards()`**  
- Mints pending rewards if cooldown is met; otherwise updates state.
+11. **`claimRewards()`**  
+    Mints pending rewards if cooldown is met; otherwise updates state.
 
 ### Additional Public/External Functions
+
 - **`calculateCubicMultiplier(uint256 multiplierMax_, uint256 timeThreshold_, uint256 timeStaked_) returns (uint256)`**  
-Public helper to view the multiplier growth.
+  Public helper to view the multiplier growth.
 
 - **`disableStakingPool(uint256 poolId_)`** (Owner-only):  
-Deactivates an existing pool by setting its `active` field to `false`, preventing further staking. Emits `StakingPoolDisabled(poolId_)`.
+  Deactivates an existing pool by setting its `active` field to `false`, preventing further staking. Emits `StakingPoolDisabled(poolId_)`.
 
 - **`getUserBaseRewards(address account_)`**:  
-Returns the **current unclaimed** base rewards for `account_`.
+  Returns the **current unclaimed** base rewards for `account_`.
 
 - **`getUserStakingRewards(address account_)`**:  
-Returns the **current unclaimed** staking rewards for `account_`.
+  Returns the **current unclaimed** staking rewards for `account_`.
 
 - **`getUserTotalRewards(address account_)`**:  
-Returns the **sum** of base and staking unclaimed rewards for `account_`.
+  Returns the **sum** of base and staking unclaimed rewards for `account_`.
 
 - **`totalCirculatingSupply()`**:  
-Returns the **minted** tokens **plus** unclaimed rewards (i.e., the “real” total supply in circulation).
+  Returns the **minted** tokens **plus** unclaimed rewards (i.e., the “real” total supply in circulation).
 
 - **`maxProjectedSupply()`**:  
-Exposes the immutable `maxTotalSupply` value, indicating the absolute maximum tokens that can ever exist.
+  Exposes the immutable `maxTotalSupply` value, indicating the absolute maximum tokens that can ever exist.
 
 - **`getCurrentMultiplier(address account_, uint256 poolId_)`**:  
-Shows the user’s real-time cubic multiplier for a specific pool, factoring in `lpStakeStartTimestamp`.
+  Shows the user’s real-time cubic multiplier for a specific pool, factoring in `lpStakeStartTimestamp`.
 
 - **`isClaimable(address account_)`**:  
-Returns a `uint32 timeLeft` indicating how many seconds until `account_` can claim again. If `timeLeft == 0`, the user can claim.
+  Returns a `uint32 timeLeft` indicating how many seconds until `account_` can claim again. If `timeLeft == 0`, the user can claim.
 
 - **`getPoolCounts()`**:  
-Returns the total number of staking pools.
+  Returns the total number of staking pools.
 
 - **`getActiveStakerCounts()`**:  
-Returns the length of the internal `activeStakers` array, i.e., how many addresses currently have nonzero stakes.
+  Returns the length of the internal `activeStakers` array, i.e., how many addresses currently have nonzero stakes.
 
 ---
 
 ## Security & Audit Considerations
 
-- **Ownership**: The `owner` can change rates, add pools, and mint tokens—adopt secure governance (e.g., multisig).
+- **Ownership**: The `owner` can change rates, add pools.
 - **Time Manipulation**: Miners can nudge block timestamps slightly, but the contract’s design minimizes material impact over long durations.
 - **Rate Boundaries**: Constraining the APY within `[MIN_YEARLY_RATE, MAX_YEARLY_RATE]` prevents extreme or sudden changes.
 - **Cooldown Enforcement**: Thwarts repeated reward claims, limiting excessive compounding exploitation.
@@ -335,7 +348,6 @@ All code in `Compota.sol` and associated files is published under the **GPL-3.0*
 For full details, see the [LICENSE](./LICENSE) file.
 
 🍎✨ **Dive into the sweet world of Compota—where your rewards grow continuously!** ✨🍐
-
 
 ## Getting started
 
